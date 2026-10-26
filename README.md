@@ -17,13 +17,14 @@
 
 | Возможность | Как реализовано |
 |---|---|
-| Загрузка MP4/WebM/MOV/MKV и ссылок YouTube/Vimeo | потоковая запись на диск, ffprobe/ffmpeg, `yt-dlp` (опционально) |
+| Загрузка MP4/WebM/MOV/MKV и ссылок YouTube/Vimeo | потоковая запись на диск, ffprobe/ffmpeg, `yt-dlp` |
+| Автоматическое название лекции | LLM придумывает осмысленное имя по содержанию, если пользователь не задал своё |
 | Автоматическая транскрибация | **Vosk** (`ru-0.42` — точная, `small-ru` — быстрая), два профиля на выбор |
 | Таймкоды до секунды | слово-уровневые тайминги Vosk → субтитры и сегменты транскрипта |
 | Семантический поиск | **bge-m3** (эмбеддинги) + полнотекстовый индекс PostgreSQL + **bge-reranker-v2-m3** |
 | Поиск по всему курсу | гибридный поиск по всем готовым лекциям сразу, с переходом на таймкод |
 | Конспект и структура лекции | локальная LLM **Qwen2.5-7B-Instruct (GGUF)** через `llama.cpp`, с экстрактивным фолбэком |
-| Просмотр с навигацией | **Plyr**, синхронные субтитры (WebVTT), кликабельный транскрипт, «карта лекции» |
+| Просмотр с навигацией | **Plyr**, главы прямо в плеере, синхронные субтитры, транскрипт по главам |
 | Вопросы по лекции | RAG: поиск фрагментов + ответ локальной LLM со ссылками на таймкоды |
 | Красивый интерфейс | React 19 + TypeScript, тёмная/светлая тема, командная палитра `Ctrl+K` |
 
@@ -33,6 +34,10 @@
 ### Поиск по всему курсу
 
 ![Поиск по курсу](docs/screenshots/05-course-search.png)
+
+### Плеер с главами
+
+![Главы в плеере](docs/screenshots/06-player-chapters.png)
 
 ---
 
@@ -75,11 +80,11 @@ powershell -ExecutionPolicy Bypass -File scripts\run.ps1
 | Vosk RU (быстрая) | `models/vosk/vosk-model-small-ru-0.22/` | 45 МБ | <https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip> |
 | Эмбеддинги bge-m3 | `models/embeddings/bge-m3/` | 2,3 ГБ | <https://huggingface.co/BAAI/bge-m3> |
 | Реранкер bge-reranker-v2-m3 | `models/reranker/bge-reranker-v2-m3/` | 2,3 ГБ | <https://huggingface.co/BAAI/bge-reranker-v2-m3> |
-| LLM Qwen2.5-7B Q4_K_M (GGUF) | `models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | 4,7 ГБ | <https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF> |
+| `models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | LLM Qwen2.5-7B Q4_K_M (GGUF) | 4,7 ГБ | <https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF> |
 | PostgreSQL 17 (portable) | `tools/pgsql/` | 330 МБ | <https://www.enterprisedb.com/download-postgresql-binaries> |
 | ffmpeg + ffprobe | `tools/ffmpeg/bin/` | 190 МБ | <https://github.com/BtbN/FFmpeg-Builds/releases> |
 | llama.cpp (Vulkan) | `tools/llama-vulkan/` | 35 МБ | <https://github.com/ggml-org/llama.cpp/releases> |
-| yt-dlp (опционально) | `tools/yt-dlp/yt-dlp.exe` | 17 МБ | <https://github.com/yt-dlp/yt-dlp/releases> |
+| yt-dlp | `tools/yt-dlp/yt-dlp.exe` | 17 МБ | <https://github.com/yt-dlp/yt-dlp/releases> |
 
 Команды для HuggingFace-моделей (нужен `pip install -U huggingface_hub`):
 
@@ -92,6 +97,10 @@ hf download BAAI/bge-reranker-v2-m3 --local-dir models\reranker\bge-reranker-v2-
   --include "config.json" "model.safetensors" "tokenizer*" "special_tokens_map.json" "sentencepiece.bpe.model"
 
 hf download bartowski/Qwen2.5-7B-Instruct-GGUF Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir models\llm
+
+# yt-dlp для импорта по ссылке
+New-Item -ItemType Directory -Force tools\yt-dlp | Out-Null
+curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe
 ```
 
 > Для bge-m3 в репозитории нет `model.safetensors` — только `pytorch_model.bin`. Это нормально.
@@ -127,8 +136,10 @@ hf download bartowski/Qwen2.5-7B-Instruct-GGUF Qwen2.5-7B-Instruct-Q4_K_M.gguf -
 
 ### Пайплайн обработки
 
-`upload → probe → (transcode) → thumbnail → audio 16k mono → Vosk → пунктуация →
-чанки → эмбеддинги → конспект/структура → ready`
+`upload → (download) → probe → (transcode) → thumbnail → audio 16k mono → Vosk → пунктуация →
+чанки → эмбеддинги → конспект, структура и название → ready`
+
+* Для импорта по ссылке первая стадия — `download` (yt-dlp), затем обычный пайплайн.
 
 * Прогресс каждой стадии пишется в `lectures` и `jobs`; UI получает его через SSE.
 * Обработка идёт в отдельном потоке, HTTP-запрос возвращается сразу (202 Accepted).

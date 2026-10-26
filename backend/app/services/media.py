@@ -289,18 +289,21 @@ class MediaService:
             )
         workdir.mkdir(parents=True, exist_ok=True)
         template = str(workdir / "download.%(ext)s")
-        proc = _run(
-            [
-                self.tools.ytdlp,
-                "--no-playlist",
-                "--no-warnings",
-                "--merge-output-format", "mp4",
-                "-f", "bv*[height<=720]+ba/b[height<=720]/b",
-                "-o", template,
-                url,
-            ],
-            timeout=3600,
-        )
+        ffmpeg_dir = Path(self.tools.ffmpeg).parent if self.tools.ffmpeg else None
+        args = [
+            self.tools.ytdlp,
+            "--no-playlist",
+            "--no-warnings",
+            "--no-part",
+            "--merge-output-format", "mp4",
+            "-f",
+            "bv*[ext=mp4][height<=720]+ba[ext=m4a]/b[ext=mp4][height<=720]/bv*[height<=720]+ba/b",
+            "-o", template,
+        ]
+        if ffmpeg_dir and ffmpeg_dir.is_dir():
+            args += ["--ffmpeg-location", str(ffmpeg_dir)]
+        args.append(url)
+        proc = _run(args, timeout=3600)
         if proc.returncode != 0:
             raise ApiError(
                 "Не удалось скачать видео по ссылке. Проверьте ссылку и доступ в интернет.",

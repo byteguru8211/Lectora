@@ -16,7 +16,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <LogoMark />
             </span>
             Lectora
-            <span className="brand__beta">beta</span>
           </NavLink>
 
           <nav className="nav">
@@ -68,11 +67,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="main">
         <div className="container">{children}</div>
       </main>
-
-      <footer className="footer container">
-        <span>Lectora · локальный семантический поиск по видеолекциям</span>
-        <span>Vosk · bge-m3 · PostgreSQL · React · Plyr</span>
-      </footer>
     </div>
   );
 }

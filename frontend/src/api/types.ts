@@ -3,6 +3,7 @@ export type LectureStatus = "queued" | "processing" | "ready" | "failed";
 export interface LectureCard {
   id: string;
   title: string;
+  title_auto: boolean;
   description: string | null;
   status: LectureStatus;
   stage: string | null;

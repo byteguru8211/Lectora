@@ -6,11 +6,10 @@ interface Props {
   sections: Section[];
   keywords: string[];
   currentTime: number;
-  llmModel: string | null;
   onSeek: (seconds: number) => void;
 }
 
-export function NotesPane({ summary, sections, keywords, currentTime, llmModel, onSeek }: Props) {
+export function NotesPane({ summary, sections, keywords, currentTime, onSeek }: Props) {
   const activeSection = sections.find(
     (section) => currentTime >= section.start_sec && currentTime < section.end_sec,
   );
@@ -23,7 +22,6 @@ export function NotesPane({ summary, sections, keywords, currentTime, llmModel, 
             <SparkIcon size={16} style={{ color: "var(--accent)" }} />
             <span className="panel__title">Кратко о лекции</span>
           </span>
-          <span className="panel__hint">{llmModel ? "локальная LLM" : "экстрактивный конспект"}</span>
         </div>
         <p className="summary-text">{summary || "Конспект появится после обработки лекции."}</p>
 

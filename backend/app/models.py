@@ -42,6 +42,7 @@ class Lecture(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
+    title_auto: Mapped[bool] = mapped_column(Boolean, default=False)
     description: Mapped[str | None] = mapped_column(Text)
 
     source_type: Mapped[str] = mapped_column(String(16), default="upload")

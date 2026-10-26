@@ -98,9 +98,11 @@ def create_lecture():
 
     store = storage()
     key = store.new_key()
+    raw_title = (request.form.get("title") or "").strip()
     lecture = Lecture(
         storage_key=key,
-        title=_clean_title(request.form.get("title"), Path(uploaded.filename).stem),
+        title=_clean_title(raw_title, Path(uploaded.filename).stem),
+        title_auto=not raw_title,
         description=(request.form.get("description") or "").strip() or None,
         asr_profile=_parse_profile(request.form.get("asr_profile")),
         source_type="upload",
@@ -144,9 +146,11 @@ def import_lecture():
     key = store.new_key()
     session = db.session()
     try:
+        raw_title = (data.get("title") or "").strip()
         lecture = Lecture(
             storage_key=key,
-            title=_clean_title(data.get("title"), "Импорт по ссылке"),
+            title=_clean_title(raw_title, "Импорт по ссылке"),
+            title_auto=not raw_title,
             description=(data.get("description") or "").strip() or None,
             asr_profile=_parse_profile(data.get("asr_profile")),
             source_type="url",
@@ -202,6 +206,7 @@ def update_lecture(lecture_id: str):
         if "title" in data:
             title = _clean_title(data.get("title"), lecture.title)
             lecture.title = title
+            lecture.title_auto = False
         if "description" in data:
             lecture.description = (data.get("description") or "").strip() or None
         session.commit()

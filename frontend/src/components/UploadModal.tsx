@@ -50,10 +50,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     if (!next) return;
     setFile(next);
     setError(null);
-    if (!title) {
-      setTitle(next.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim());
-    }
-  }, [title]);
+  }, []);
 
   const submitFile = async () => {
     if (!file) {
@@ -110,7 +107,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
           <div>
             <h2 className="modal__title">Новая лекция</h2>
             <p className="small muted" style={{ marginTop: 4 }}>
-              Видео останется на этом компьютере — обработка полностью локальная.
+              Загрузите запись — расшифровка, конспект и поиск появятся автоматически.
             </p>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Закрыть" disabled={busy}>
@@ -196,21 +193,24 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
                 />
               </div>
               <p className="small muted">
-                Нужен yt-dlp в <span className="mono">tools/yt-dlp</span> и доступ в интернет на момент скачивания.
+                Поддерживаются ссылки YouTube и Vimeo. Видео скачается и появится в библиотеке.
               </p>
             </div>
           )}
 
           <div className="field">
             <label className="field__label" htmlFor="lecture-title">
-              Название
+              Название{" "}
+              <span style={{ textTransform: "none", fontWeight: 400 }}>
+                (оставьте пустым — придумаем по содержанию)
+              </span>
             </label>
             <input
               id="lecture-title"
               className="input"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="Например: Теорема Пифагора — разбор"
+              placeholder="Название придумается автоматически"
               disabled={busy}
             />
           </div>
@@ -238,7 +238,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
                 disabled={busy}
                 style={profile === "accurate" ? { borderColor: "var(--accent)", color: "var(--text)" } : undefined}
               >
-                <DownloadIcon size={13} /> Точное · ru-0.42
+                <DownloadIcon size={13} /> Точное
               </button>
               <button
                 className={`chip chip--button ${profile === "fast" ? "is-active" : ""}`}
@@ -246,11 +246,11 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
                 disabled={busy}
                 style={profile === "fast" ? { borderColor: "var(--accent)", color: "var(--text)" } : undefined}
               >
-                <DownloadIcon size={13} /> Быстрое · small
+                <DownloadIcon size={13} /> Быстрое
               </button>
             </div>
             <p className="small muted" style={{ marginTop: 6 }}>
-              Точное качество медленнее примерно в 3 раза. Для демонстрации на защите — быстрое.
+              Точный режим медленнее примерно в 3 раза. Для демонстрации подойдёт быстрый.
             </p>
           </div>
 

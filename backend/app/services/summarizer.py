@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
@@ -29,6 +30,23 @@ from .asr import Segment
 from .llm import LlmUnavailable, llm
 
 log = logging.getLogger(__name__)
+
+_TITLE_FIXES = (
+    (r"\bплюс[\s-]*плюс\w*\b", "C++"),
+    (r"\bплюсах\b", "C++"),
+    (r"\bпайтон\w*\b", "Python"),
+    (r"\bпитон\w*\b", "Python"),
+    (r"\bджава[\s-]*скрипт\w*\b", "JavaScript"),
+    (r"\bси[\s-]*шарп\w*\b", "C#"),
+    (r"\bджава\b", "Java"),
+)
+
+
+def _fix_tech_names(title: str) -> str:
+    """ASR writes «плюс плюс» instead of C++ — restore the usual spelling."""
+    for pattern, replacement in _TITLE_FIXES:
+        title = re.sub(pattern, replacement, title, flags=re.IGNORECASE)
+    return normalize_space(title)
 
 _SYSTEM = (
     "Ты — опытный методист и редактор учебных конспектов. Ты работаешь только с "
@@ -64,6 +82,7 @@ class StudyNotes:
     keywords: list[str]
     llm_used: bool
     model: str | None = None
+    title: str | None = None
 
 
 class Summarizer:
@@ -119,16 +138,42 @@ class Summarizer:
         )
         if not isinstance(data, dict):
             return None
-        return self._validate(data, duration_sec)
+        notes = self._validate(data, duration_sec)
+        if notes is not None and len(notes.sections) < 3:
+            # The model sometimes returns 2 broad chapters; ask once for a proper outline.
+            log.info("summariser: only %d sections, retrying", len(notes.sections))
+            try:
+                retry = llm.chat_json(
+                    [
+                        {"role": "system", "content": _SYSTEM},
+                        {"role": "user", "content": payload},
+                        {
+                            "role": "user",
+                            "content": "Разделов слишком мало. Верни 3-8 разделов "
+                            "с таймкодами, как требуется в задании. Только JSON.",
+                        },
+                    ],
+                    max_tokens=Config.LLM_MAX_TOKENS,
+                    temperature=0.1,
+                )
+                if isinstance(retry, dict):
+                    retried = self._validate(retry, duration_sec)
+                    if retried is not None and len(retried.sections) >= len(notes.sections):
+                        notes = retried
+            except LlmUnavailable:
+                pass
+        return notes
 
     def _reduce_payload(self, title: str, transcript: str, duration: float) -> str:
-        return f"""Лекция: «{title}». Длительность: {format_timestamp(duration)}.
+        header = f"Лекция: «{title}»." if title else "Рабочее название не задано — придумай его сам."
+        return f"""{header} Длительность: {format_timestamp(duration)}.
 Ниже расшифровка с таймкодами в формате [мм:сс].
 
 {transcript}
 
 Составь учебный конспект. Верни JSON ровно такой структуры:
 {{
+  "title": "название лекции (3-7 слов, без кавычек и точки)",
   "summary": "связный обзор лекции на 70-110 слов, 3-4 предложения",
   "sections": [
     {{
@@ -149,8 +194,11 @@ class Summarizer:
 4. summary — это цельный обзор: о чём лекция, какие темы разобраны, кому полезна.
    Не перечисляй разделы по очереди и не повторяй одни и те же формулировки.
 5. keywords — 8-12 ключевых терминов в именительном падеже.
-6. Не придумывай факты, которых нет в расшифровке. Если фрагмент неразборчив — пропусти его.
-7. Только JSON, без пояснений."""
+6. title — конкретное название темы: «Прямоугольный параллелепипед и тела вращения»,
+   а не «Лекция по геометрии». Без кавычек, без слова «лекция», без точки в конце.
+   Не повторяй рабочее название и не пиши «без названия».
+7. Не придумывай факты, которых нет в расшифровке. Если фрагмент неразборчив — пропусти его.
+8. Только JSON, без пояснений."""
 
     def _map_notes(self, segments: Sequence[Segment]) -> list[dict]:
         """Map phase for lectures longer than the context window."""
@@ -207,7 +255,7 @@ class Summarizer:
                     title=truncate(title, 90),
                     start_sec=max(0.0, min(start, duration or start)),
                     end_sec=max(start, min(end, duration or end)),
-                    summary=normalize_space(str(item.get("summary") or "")),
+                    summary=_fix_tech_names(normalize_space(str(item.get("summary") or ""))),
                     key_points=key_points,
                 )
             )
@@ -235,19 +283,28 @@ class Summarizer:
             # The model sometimes returns a one-liner; build a compact abstract
             # from the first section summaries (no repetition, no section list).
             parts = [summary.strip()] if summary else []
-            for section in sections[:3]:
+            for section in sections[:2]:
                 text = (section.summary or "").strip()
                 if text and text not in parts:
                     parts.append(text)
-            summary = " ".join(parts)[:900]
+            summary = " ".join(parts)[:700]
         if not summary:
             return None
+
+        summary = _fix_tech_names(summary)
+        generated_title = normalize_space(str(data.get("title") or "")).strip(' "«»\'.')
+        generated_title = generated_title.rstrip(".")
+        generated_title = _fix_tech_names(generated_title)
+        if not (3 <= len(generated_title) <= 120):
+            generated_title = None
+
         return StudyNotes(
             summary=summary,
             sections=sections,
             keywords=keyword_list,
             llm_used=True,
             model=Config.LLM_MODEL,
+            title=generated_title,
         )
 
     # -- extractive fallback -------------------------------------------

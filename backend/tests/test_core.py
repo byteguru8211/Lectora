@@ -123,3 +123,34 @@ def test_extractive_summary_has_sections_and_keywords():
     assert notes.sections
     assert notes.keywords
     assert notes.sections[-1].end_sec <= 41
+
+
+def test_validate_extracts_clean_title():
+    summarizer = Summarizer()
+    summary = " ".join(["слово"] * 60)
+    data = {
+        "title": ' «Прямоугольный параллелепипед и тела вращения». ',
+        "summary": summary,
+        "sections": [
+            {"title": f"Раздел {index}", "start_sec": index * 60, "end_sec": index * 60 + 60}
+            for index in range(3)
+        ],
+        "keywords": ["куб", "сфера", "конус"],
+    }
+    notes = summarizer._validate(data, 200)
+    assert notes is not None
+    assert notes.title == "Прямоугольный параллелепипед и тела вращения"
+    assert len(notes.sections) == 3
+
+
+def test_validate_rejects_tiny_title():
+    summarizer = Summarizer()
+    data = {
+        "title": "…",
+        "summary": " ".join(["слово"] * 60),
+        "sections": [{"title": "Раздел", "start_sec": 0, "end_sec": 60}],
+        "keywords": [],
+    }
+    notes = summarizer._validate(data, 60)
+    assert notes is not None
+    assert notes.title is None

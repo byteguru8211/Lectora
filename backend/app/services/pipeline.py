@@ -15,6 +15,7 @@ Design notes
 from __future__ import annotations
 
 import logging
+import mimetypes
 import time
 import uuid
 from pathlib import Path
@@ -47,6 +48,7 @@ log = logging.getLogger(__name__)
 
 STAGE_LABELS = {
     "queued": "В очереди",
+    "download": "Загрузка видео по ссылке",
     "probe": "Анализ файла",
     "transcode": "Подготовка видео",
     "audio": "Извлечение звука",
@@ -121,6 +123,21 @@ class Pipeline:
             media = MediaService()
             media.require()
             media_dir = Path(self.storage.lecture_dir(lecture.storage_key))
+
+            # -- URL import: the download is part of the pipeline ---------
+            existing = self.storage.path_for(lecture.video_path)
+            if lecture.source_type == "url" and (existing is None or not Path(existing).exists()):
+                if not lecture.source_url:
+                    raise ApiError("У лекции нет ссылки для импорта", 400, "source_url_missing")
+                progress.update("download", 1.0, force=True)
+                downloaded = media.download_url(lecture.source_url, media_dir)
+                target = media_dir / f"original{downloaded.suffix.lower() or '.mp4'}"
+                if downloaded != target:
+                    downloaded.replace(target)
+                lecture.video_path = self.storage.relative(target)
+                lecture.original_filename = target.name[:255]
+                session.commit()
+
             source = self.storage.path_for(lecture.video_path)
             if source is None or not Path(source).exists():
                 raise ApiError("Файл лекции не найден в хранилище", 500, "file_missing")
@@ -145,7 +162,10 @@ class Pipeline:
             lecture.duration_sec = round(duration, 2)
             lecture.width = info.width
             lecture.height = info.height
-            lecture.mime_type = "video/mp4" if info.has_video else "audio/mpeg"
+            lecture.mime_type = (
+                mimetypes.guess_type(str(playable))[0]
+                or ("video/mp4" if info.has_video else "audio/mpeg")
+            )
 
             progress.update("audio", 6.0, force=True)
             thumb_at = max(0.5, min(duration * 0.08, 30.0)) if duration else 0.0
@@ -242,7 +262,7 @@ class Pipeline:
             # -- notes -------------------------------------------------
             progress.update("notes", 84.0, force=True)
             notes = summarizer.build(
-                title=lecture.title,
+                title="" if lecture.title_auto else lecture.title,
                 segments=segments,
                 duration_sec=duration,
             )
@@ -261,6 +281,11 @@ class Pipeline:
             lecture.summary = notes.summary
             lecture.keywords = notes.keywords
             lecture.llm_model = notes.model if notes.llm_used else None
+            if lecture.title_auto and notes.title:
+                generated = notes.title.strip()
+                if len(generated) >= 3 and generated.lower() != lecture.title.strip().lower():
+                    lecture.title = generated[:300]
+                    log.info("generated title: %s", lecture.title)
             session.commit()
 
             progress.update("finalize", 98.0, force=True)

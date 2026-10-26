@@ -62,8 +62,8 @@ export function SearchPage() {
         <div>
           <h1 className="page-head__title">Поиск по всему курсу</h1>
           <p className="page-head__subtitle">
-            Ищем по смыслу во всех лекциях сразу: эмбеддинги bge-m3, полнотекстовый индекс PostgreSQL
-            и реранкер. Каждый результат — с таймкодом и переходом в плеер.
+            Ищем по смыслу во всех лекциях сразу. Каждый результат — с таймкодом и переходом
+            в плеер на нужный момент.
           </p>
         </div>
       </div>
@@ -132,8 +132,6 @@ export function SearchPage() {
               Найдено <strong>{results.length}</strong> фрагментов
             </span>
             {meta && <span>за {meta.took} мс</span>}
-            {meta && <span>· проанализировано {meta.candidates} фрагментов</span>}
-            {meta?.reranked && <span>· реранкер bge включён</span>}
           </div>
 
           {results.length === 0 ? (

@@ -167,8 +167,20 @@ export const CaptionsIcon = (p: IconProps) => (
   </svg>
 );
 
-export const StarIcon = (p: IconProps) => (
+export const ChevronDownIcon = (p: IconProps) => (
   <svg {...base(p)}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
+export const PencilIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+    <path d="m13.5 6.5 3 3" />
+  </svg>
+);
+
+export const StarIcon = (p: IconProps) => (  <svg {...base(p)}>
     <path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8L12 4Z" />
   </svg>
 );

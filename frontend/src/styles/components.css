@@ -1169,14 +1169,15 @@ mark {
 
 .qa__input textarea {
   flex: 1;
-  min-height: 42px;
+  min-height: 54px;
   max-height: 120px;
   resize: none;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   background: var(--bg-soft);
   font-size: 13.5px;
+  line-height: 1.45;
 }
 
 .qa__input textarea:focus {
@@ -1218,6 +1219,174 @@ mark {
     opacity: 1;
     transform: translateY(-2px);
   }
+}
+
+/* ---------- player chapters ---------- */
+.player-chapters {
+  position: absolute;
+  left: 12px;
+  bottom: 62px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.player-chapters__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(420px, 62vw);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.74);
+  color: #f1f5f9;
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+  transition: background 0.16s var(--ease);
+}
+
+.player-chapters__toggle:hover {
+  background: rgba(2, 6, 23, 0.9);
+}
+
+.player-chapters__time {
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.player-chapters__title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player-chapters__menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: min(420px, 74vw);
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.player-chapters__head {
+  padding: 10px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+
+.player-chapters__list {
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.player-chapter {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  transition: background 0.14s var(--ease), color 0.14s var(--ease);
+}
+
+.player-chapter:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.player-chapter.is-active {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.player-chapter__time {
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 38px;
+}
+
+.player-chapter__title {
+  flex: 1;
+  line-height: 1.35;
+}
+
+.plyr__chapter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 255, 255, 0.66);
+  box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.35);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ---------- transcript chapters ---------- */
+.transcript__chapter {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin: 6px 0 2px;
+  border-radius: 8px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.transcript__chapter:hover {
+  background: var(--surface-2);
+}
+
+.transcript__chapter.is-active {
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+}
+
+.transcript__chapter-time {
+  color: var(--accent-2);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-size: 12px;
+}
+
+.transcript__chapter-title {
+  flex: 1;
+  font-weight: 650;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.transcript__chapter-count {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.transcript__row {
+  scroll-margin-top: 48px;
 }
 
 /* ---------- misc ---------- */

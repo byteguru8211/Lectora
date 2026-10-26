@@ -104,7 +104,6 @@ export function SearchPane({ lectureId, keywords, initialQuery, onSeek, onHits, 
               Найдено <strong>{results.length}</strong> фрагментов
             </span>
             {meta && <span>за {meta.took} мс</span>}
-            {meta?.reranked && <span>· реранкер bge</span>}
           </div>
           {results.length === 0 ? (
             <div className="empty" style={{ padding: 28 }}>

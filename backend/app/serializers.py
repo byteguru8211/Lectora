@@ -18,6 +18,7 @@ def lecture_card(lecture: Lecture) -> dict:
     return {
         "id": str(lecture.id),
         "title": lecture.title,
+        "title_auto": lecture.title_auto,
         "description": lecture.description,
         "status": lecture.status,
         "stage": lecture.stage,

@@ -19,6 +19,10 @@ TITLE_INDEX = (
     "CREATE INDEX IF NOT EXISTS ix_lectures_title_trgm "
     "ON lectures USING GIN (lower(title) gin_trgm_ops)"
 )
+MIGRATIONS = (
+    # 1.0.1: titles generated from the transcript
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS title_auto BOOLEAN NOT NULL DEFAULT FALSE",
+)
 
 
 def ensure_schema(engine) -> None:
@@ -28,6 +32,8 @@ def ensure_schema(engine) -> None:
         log.warning("non-postgresql database: skipping full-text indexes")
         return
     with engine.begin() as connection:
+        for statement in MIGRATIONS:
+            connection.execute(text(statement))
         connection.execute(text(FTS_INDEX))
         try:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))

@@ -139,7 +139,7 @@ export function QaPane({ lectureId, suggestions, onSeek }: Props) {
 
       <div className="qa__input">
         <textarea
-          placeholder="Например: что такое прямоугольный параллелепипед?"
+          placeholder="Спросите что-нибудь по этой лекции…"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
           onKeyDown={(event) => {

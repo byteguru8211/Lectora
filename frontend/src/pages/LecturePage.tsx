@@ -5,6 +5,7 @@ import type { LectureDetail, LectureStatus, SearchHit, Segment } from "../api/ty
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { NotesPane } from "../components/NotesPane";
 import { QaPane } from "../components/QaPane";
+import { RenameDialog } from "../components/RenameDialog";
 import { SearchPane } from "../components/SearchPane";
 import { SemanticTimeline } from "../components/SemanticTimeline";
 import { TranscriptPane } from "../components/TranscriptPane";
@@ -16,6 +17,7 @@ import {
   ClockIcon,
   DownloadIcon,
   LayersIcon,
+  PencilIcon,
   RefreshIcon,
   SearchIcon,
   TrashIcon,
@@ -53,6 +55,8 @@ export function LecturePage() {
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmReprocess, setConfirmReprocess] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameBusy, setRenameBusy] = useState(false);
   const [working, setWorking] = useState(false);
 
   const initialSeek = useRef<number | null>(
@@ -173,8 +177,21 @@ export function LecturePage() {
     }
   };
 
-  const reprocess = async () => {
-    setWorking(true);
+  const renameLecture = async (title: string) => {
+    setRenameBusy(true);
+    try {
+      const updated = await api.updateLecture(lectureId, { title });
+      setLecture((current) => (current ? { ...current, title: updated.title, title_auto: updated.title_auto } : current));
+      toast.success("Название обновлено");
+      setRenameOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Не удалось переименовать");
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
+  const reprocess = async () => {    setWorking(true);
     try {
       await api.reprocess(lectureId);
       toast.success("Лекция отправлена на повторную обработку");
@@ -247,18 +264,15 @@ export function LecturePage() {
                 </span>
               </>
             )}
-            {lecture.chunk_count > 0 && (
-              <>
-                <span className="lecture-meta__dot" />
-                <span>{lecture.chunk_count} фрагментов индекса</span>
-              </>
-            )}
             <span className="lecture-meta__dot" />
             <span>{formatDate(lecture.created_at)}</span>
           </div>
         </div>
 
         <div className="row" style={{ gap: 8 }}>
+          <button className="btn btn--ghost btn--sm" onClick={() => setRenameOpen(true)}>
+            <PencilIcon size={14} /> Переименовать
+          </button>
           <button className="btn btn--ghost btn--sm" onClick={() => setConfirmReprocess(true)}>
             <RefreshIcon size={14} /> Переобработать
           </button>
@@ -282,8 +296,7 @@ export function LecturePage() {
               <div className="progress__bar" style={{ width: `${Math.max(3, lecture.progress)}%` }} />
             </div>
             <p className="small muted">
-              Распознаём речь локально (Vosk), затем строим семантический индекс и конспект. Можно закрыть
-              страницу — обработка продолжится на сервере.
+              Распознаём речь и собираем конспект. Можно закрыть страницу — обработка продолжится.
             </p>
           </div>
         </div>
@@ -308,9 +321,12 @@ export function LecturePage() {
                 src={lecture.media_url}
                 poster={lecture.thumbnail_url}
                 subtitlesUrl={lecture.subtitles_url}
+                sections={lecture.sections}
+                currentTime={currentTime}
                 seekRequest={seekRequest}
                 onTime={setCurrentTime}
                 onDuration={(value) => setDuration(value || lecture.duration_sec)}
+                onSeek={seek}
               />
               <div style={{ border: "1px solid var(--border)", borderTop: "none", borderRadius: "0 0 18px 18px", overflow: "hidden" }}>
                 <SemanticTimeline
@@ -370,6 +386,7 @@ export function LecturePage() {
             <div className="lecture-transcript">
               <TranscriptPane
                 segments={segments}
+                sections={lecture.sections}
                 currentTime={currentTime}
                 onSeek={seek}
                 highlightQuery={tab === "search" ? transcriptQuery : ""}
@@ -411,7 +428,6 @@ export function LecturePage() {
                     sections={lecture.sections}
                     keywords={lecture.keywords}
                     currentTime={currentTime}
-                    llmModel={lecture.llm_model}
                     onSeek={seek}
                   />
                 )}
@@ -453,6 +469,14 @@ export function LecturePage() {
         busy={working}
         onClose={() => setConfirmReprocess(false)}
         onConfirm={reprocess}
+      />
+
+      <RenameDialog
+        open={renameOpen}
+        initialTitle={lecture.title}
+        busy={renameBusy}
+        onSave={renameLecture}
+        onClose={() => setRenameOpen(false)}
       />
     </>
   );

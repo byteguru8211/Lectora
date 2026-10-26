@@ -89,10 +89,6 @@ export function LibraryPage() {
   return (
     <>
       <section className="hero">
-        <div className="hero__eyebrow">
-          <SparkIcon size={14} />
-          Локальный ИИ · без облака и API-ключей
-        </div>
         <h1 className="hero__title">
           Найдите нужный момент в лекции <em>по смыслу</em>, а не по словам
         </h1>
@@ -153,7 +149,7 @@ export function LibraryPage() {
               <span className="processing-card__pct">это может занять несколько минут</span>
             </div>
             <p className="small muted">
-              Распознавание речи идёт локально на CPU. Можно уйти со страницы — прогресс сохранится.
+              Распознаём речь и строим индекс. Можно уйти со страницы — прогресс сохранится.
             </p>
           </div>
         </div>
@@ -216,7 +212,7 @@ export function LibraryPage() {
             <strong style={{ fontSize: 14 }}>Смысловой поиск</strong>
           </div>
           <p className="small muted" style={{ marginTop: 8 }}>
-            Эмбеддинги bge-m3 и реранкер находят фрагменты по смыслу, даже если вы не помните формулировку.
+            Находит фрагменты по смыслу, даже если вы не помните точную формулировку.
           </p>
         </div>
         <div className="card card--pad">
@@ -234,7 +230,7 @@ export function LibraryPage() {
             <strong style={{ fontSize: 14 }}>Конспект и структура</strong>
           </div>
           <p className="small muted" style={{ marginTop: 8 }}>
-            Локальная LLM собирает обзор, разделы с таймкодами и ключевые термины — как конспект после лекции.
+            Автоматический обзор, разделы с таймкодами и ключевые термины — как конспект после лекции.
           </p>
         </div>
       </div>

@@ -43,7 +43,8 @@ $checks = @(
   @{ Path = "models\embeddings\bge-m3"; Hint = "bge-m3 в models\embeddings" },
   @{ Path = "models\reranker\bge-reranker-v2-m3"; Hint = "bge-reranker-v2-m3 в models\reranker" },
   @{ Path = "models\llm\Qwen2.5-7B-Instruct-Q4_K_M.gguf"; Hint = "GGUF-модель в models\llm" },
-  @{ Path = "tools\llama-vulkan\llama-server.exe"; Hint = "llama.cpp (Vulkan) в tools\llama-vulkan" }
+  @{ Path = "tools\llama-vulkan\llama-server.exe"; Hint = "llama.cpp (Vulkan) в tools\llama-vulkan" },
+  @{ Path = "tools\yt-dlp\yt-dlp.exe"; Hint = "yt-dlp.exe в tools\yt-dlp (импорт по ссылке)" }
 )
 $missing = @()
 foreach ($check in $checks) {
