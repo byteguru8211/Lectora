@@ -1222,14 +1222,51 @@ mark {
 }
 
 /* ---------- player chapters ---------- */
+.player-timecode {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: rgba(2, 6, 23, 0.74);
+  color: #f8fafc;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.player-timecode.is-paused {
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: #fff;
+}
+
+.player-timecode__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 .player-chapters {
   position: absolute;
   left: 12px;
   bottom: 62px;
-  z-index: 6;
+  z-index: 8;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
+  pointer-events: none;
+}
+
+.player-chapters > * {
+  pointer-events: auto;
 }
 
 .player-chapters__toggle {
@@ -1267,7 +1304,7 @@ mark {
   bottom: calc(100% + 8px);
   left: 0;
   width: min(420px, 74vw);
-  max-height: 320px;
+  max-height: min(320px, 48vh);
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1336,6 +1373,33 @@ mark {
   box-shadow: 0 0 0 1px rgba(2, 6, 23, 0.35);
   pointer-events: none;
   z-index: 2;
+}
+
+/* fullscreen: keep chapters and the timecode reachable */
+.plyr--fullscreen .player-chapters,
+.plyr:fullscreen .player-chapters {
+  bottom: 78px;
+  left: 16px;
+}
+
+.plyr--fullscreen .player-chapters__toggle,
+.plyr:fullscreen .player-chapters__toggle {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.plyr--fullscreen .player-chapters__menu,
+.plyr:fullscreen .player-chapters__menu {
+  width: min(460px, 60vw);
+  max-height: min(420px, 52vh);
+}
+
+.plyr--fullscreen .player-timecode,
+.plyr:fullscreen .player-timecode {
+  top: 16px;
+  right: 16px;
+  padding: 7px 12px;
+  font-size: 13px;
 }
 
 /* ---------- transcript chapters ---------- */

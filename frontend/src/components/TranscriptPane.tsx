@@ -39,7 +39,7 @@ export function TranscriptPane({
   highlightQuery,
   activeHitSeconds,
 }: Props) {
-  const [follow, setFollow] = useState(true);
+  const [follow, setFollow] = useState(false);
   const rowRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
 
   const activeIndex = useMemo(() => {
@@ -162,10 +162,7 @@ export function TranscriptPane({
                   else rowRefs.current.delete(segment.idx);
                 }}
                 className={`transcript__row ${segment.idx === activeIndex ? "is-active" : ""}`}
-                onClick={() => {
-                  setFollow(true);
-                  onSeek(segment.start_sec);
-                }}
+                onClick={() => onSeek(segment.start_sec)}
                 title={`Перейти к ${segment.timestamp}`}
               >
                 <span className="transcript__time">{segment.timestamp}</span>

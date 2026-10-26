@@ -1,6 +1,8 @@
 import Plyr from "plyr";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Section } from "../api/types";
+import { formatClock } from "../utils/format";
 import { ChevronDownIcon } from "./icons";
 
 interface Props {
@@ -33,6 +35,9 @@ export function VideoPlayer({
   const durationRef = useRef(onDuration);
   const [ready, setReady] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
+  const [paused, setPaused] = useState(true);
+  // Plyr's own container goes fullscreen, so overlays must live inside it.
+  const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
 
   // Callbacks are stored in refs: otherwise every parent render would recreate
   // the Plyr instance (and the player would reset on each timeupdate).
@@ -67,9 +72,12 @@ export function VideoPlayer({
     playerRef.current = player;
 
     const handleTime = () => timeRef.current(player.currentTime);
+    const handlePlay = () => setPaused(false);
+    const handlePause = () => setPaused(true);
     const handleLoaded = () => {
       durationRef.current(player.duration || 0);
       setReady(true);
+      setOverlayHost(player.elements.container as HTMLElement);
       try {
         const captions = (player as unknown as { captions?: { active: boolean } }).captions;
         if (captions) captions.active = true;
@@ -81,13 +89,20 @@ export function VideoPlayer({
     player.on("timeupdate", handleTime);
     player.on("loadedmetadata", handleLoaded);
     player.on("seeked", handleTime);
+    player.on("play", handlePlay);
+    player.on("pause", handlePause);
+    player.on("ended", handlePause);
 
     return () => {
       player.off("timeupdate", handleTime);
       player.off("loadedmetadata", handleLoaded);
       player.off("seeked", handleTime);
+      player.off("play", handlePlay);
+      player.off("pause", handlePause);
+      player.off("ended", handlePause);
       player.destroy();
       playerRef.current = null;
+      setOverlayHost(null);
       setReady(false);
     };
   }, [src]);
@@ -125,6 +140,56 @@ export function VideoPlayer({
       (section) => currentTime >= section.start_sec && currentTime < section.end_sec,
     ) ?? sections[0];
 
+  const overlay = (
+    <>
+      <div
+        className={`player-timecode ${paused ? "is-paused" : ""}`}
+        title={paused ? "Пауза" : "Идёт воспроизведение"}
+      >
+        {paused && <span className="player-timecode__dot" />}
+        {formatClock(currentTime)}
+      </div>
+
+      {sections.length > 0 && (
+        <div className={`player-chapters ${chaptersOpen ? "is-open" : ""}`}>
+          {chaptersOpen && (
+            <div className="player-chapters__menu" role="menu" aria-label="Главы лекции">
+              <div className="player-chapters__head">Главы лекции</div>
+              <div className="player-chapters__list">
+                {sections.map((section) => (
+                  <button
+                    key={section.id}
+                    className={`player-chapter ${
+                      section.id === activeChapter?.id ? "is-active" : ""
+                    }`}
+                    onClick={() => {
+                      onSeek(section.start_sec);
+                      setChaptersOpen(false);
+                    }}
+                  >
+                    <span className="player-chapter__time">{section.timestamp}</span>
+                    <span className="player-chapter__title">{section.title}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <button
+            className="player-chapters__toggle"
+            onClick={() => setChaptersOpen((open) => !open)}
+            aria-expanded={chaptersOpen}
+            title="Главы лекции"
+          >
+            <span className="player-chapters__time">{activeChapter?.timestamp ?? "0:00"}</span>
+            <span className="player-chapters__title">{activeChapter?.title ?? "Главы"}</span>
+            <ChevronDownIcon size={14} />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div className="player-card">
       <div className="player-card__holder" ref={holderRef}>
@@ -134,44 +199,7 @@ export function VideoPlayer({
             <track kind="captions" label="Русский" srcLang="ru" src={subtitlesUrl} default />
           )}
         </video>
-
-        {sections.length > 0 && (
-          <div className={`player-chapters ${chaptersOpen ? "is-open" : ""}`}>
-            {chaptersOpen && (
-              <div className="player-chapters__menu" role="menu" aria-label="Главы лекции">
-                <div className="player-chapters__head">Главы лекции</div>
-                <div className="player-chapters__list">
-                  {sections.map((section) => (
-                    <button
-                      key={section.id}
-                      className={`player-chapter ${
-                        section.id === activeChapter?.id ? "is-active" : ""
-                      }`}
-                      onClick={() => {
-                        onSeek(section.start_sec);
-                        setChaptersOpen(false);
-                      }}
-                    >
-                      <span className="player-chapter__time">{section.timestamp}</span>
-                      <span className="player-chapter__title">{section.title}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <button
-              className="player-chapters__toggle"
-              onClick={() => setChaptersOpen((open) => !open)}
-              aria-expanded={chaptersOpen}
-              title="Главы лекции"
-            >
-              <span className="player-chapters__time">{activeChapter?.timestamp ?? "0:00"}</span>
-              <span className="player-chapters__title">{activeChapter?.title ?? "Главы"}</span>
-              <ChevronDownIcon size={14} />
-            </button>
-          </div>
-        )}
+        {overlayHost ? createPortal(overlay, overlayHost) : overlay}
       </div>
     </div>
   );
