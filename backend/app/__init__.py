@@ -21,7 +21,7 @@ from .extensions import db
 from .schema import ensure_schema
 from .services.jobs import JobRunner
 from .services.media import MediaService
-from .services.pipeline import Pipeline, init_pipeline
+from .services.pipeline import init_pipeline
 from .services.storage import Storage
 
 log = logging.getLogger(__name__)

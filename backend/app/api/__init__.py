@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 
 from flask import current_app
-from werkzeug.exceptions import NotFound
 
 from ..errors import ApiError
 

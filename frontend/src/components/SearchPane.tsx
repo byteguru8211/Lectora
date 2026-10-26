@@ -113,23 +113,24 @@ export function SearchPane({ lectureId, keywords, initialQuery, onSeek, onHits, 
             </div>
           ) : (
             <div className="results">
-              {results.map((hit) => (
-                <button
-                  key={hit.chunk_id}
-                  className="result"
-                  onClick={() => onSeek(hit.start_sec)}
-                >
-                  <div className="result__head">
-                    <span className="result__time">{hit.timestamp}</span>
-                    <span className="result__score">релевантность {Math.round((hit.scores.final ?? 0) * 100)}%</span>
-                  </div>
-                  <p className="result__text">
-                    {splitBySpans(hit.snippet, hit.spans).map((part, index) =>
-                      part.mark ? <mark key={index}>{part.text}</mark> : part.text,
-                    )}
-                  </p>
-                </button>
-              ))}
+              {(() => {
+                const top = Math.max(...results.map((hit) => hit.scores.final ?? 0), 1e-9);
+                return results.map((hit) => (
+                  <button key={hit.chunk_id} className="result" onClick={() => onSeek(hit.start_sec)}>
+                    <div className="result__head">
+                      <span className="result__time">{hit.timestamp}</span>
+                      <span className="result__score">
+                        совпадение {Math.max(1, Math.round(((hit.scores.final ?? 0) / top) * 100))}%
+                      </span>
+                    </div>
+                    <p className="result__text">
+                      {splitBySpans(hit.snippet, hit.spans).map((part, index) =>
+                        part.mark ? <mark key={index}>{part.text}</mark> : part.text,
+                      )}
+                    </p>
+                  </button>
+                ));
+              })()}
             </div>
           )}
         </>

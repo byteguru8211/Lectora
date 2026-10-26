@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify
-from sqlalchemy import func, select, text
+from sqlalchemy import func, text
 
 from ..config import Config
 from ..extensions import db

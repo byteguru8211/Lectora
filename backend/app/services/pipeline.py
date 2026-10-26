@@ -17,7 +17,6 @@ from __future__ import annotations
 import logging
 import time
 import uuid
-from datetime import timezone
 from pathlib import Path
 
 from sqlalchemy import delete
@@ -51,6 +50,7 @@ STAGE_LABELS = {
     "probe": "Анализ файла",
     "transcode": "Подготовка видео",
     "audio": "Извлечение звука",
+    "model": "Загрузка модели распознавания",
     "transcribe": "Распознавание речи",
     "punctuate": "Оформление текста",
     "embed": "Семантический индекс",
@@ -164,6 +164,8 @@ class Pipeline:
             lecture.audio_path = self.storage.relative(audio_path)
 
             progress.update("transcribe", 18.0, force=True)
+            if not self.asr.is_loaded(lecture.asr_profile):
+                progress.update("model", 18.5, force=True)
             eta = self.asr.eta_seconds(duration, lecture.asr_profile)
             log.info("ASR %s, %.0fs audio, ~%ss ETA", lecture.asr_profile, duration, eta)
             transcription = self.asr.transcribe(

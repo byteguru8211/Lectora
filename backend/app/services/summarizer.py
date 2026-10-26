@@ -12,13 +12,11 @@ from __future__ import annotations
 import json
 import logging
 import math
-import re
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 from ..config import Config
 from ..utils.text import (
-    STOPWORDS,
     capitalize_first,
     content_tokens,
     keywords as top_keywords,

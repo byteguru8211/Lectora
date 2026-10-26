@@ -6,17 +6,15 @@ import json
 import logging
 import mimetypes
 import time
-import uuid
 from pathlib import Path
 
-from flask import Blueprint, Response, current_app, jsonify, request, send_file, stream_with_context
-from sqlalchemy import func, select, update
-from sqlalchemy.orm import selectinload
+from flask import Blueprint, Response, jsonify, request, send_file, stream_with_context
+from sqlalchemy import func, update
 
 from ..config import Config
 from ..errors import ApiError
 from ..extensions import db
-from ..models import Job, Lecture, Section, TranscriptSegment, utcnow
+from ..models import Job, Lecture, Section, TranscriptSegment
 from ..serializers import job_dict, lecture_card, lecture_detail, segment_dict
 from ..services.pipeline import STAGE_LABELS
 from ..services.search import search_service

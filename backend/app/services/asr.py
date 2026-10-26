@@ -109,6 +109,9 @@ class AsrService:
             log.exception("Vosk warm-up failed")
             return False
 
+    def is_loaded(self, profile: str) -> bool:
+        return self._model is not None and self._model_profile == profile
+
     # -- transcription --------------------------------------------------
     def transcribe(
         self,

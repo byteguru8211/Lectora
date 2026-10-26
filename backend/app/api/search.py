@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 import time
 
-from flask import Blueprint, current_app, jsonify, request
-from sqlalchemy import func, select, update
+from flask import Blueprint, jsonify, request
+from sqlalchemy import func, update
 
 from ..config import Config
 from ..errors import ApiError

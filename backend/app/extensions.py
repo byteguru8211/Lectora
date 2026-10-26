@@ -6,7 +6,6 @@ from flask import Flask
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from .config import Config
 from .models import Base
 
 
