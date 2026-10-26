@@ -16,6 +16,7 @@ from .api import qa as qa_api
 from .api import search as search_api
 from .api import system as system_api
 from .api import auth as auth_api
+from .api import sharing as sharing_api
 from .config import Config
 from .errors import register_error_handlers
 from .extensions import db
@@ -81,9 +82,12 @@ def create_app(config_object: type[Config] = Config, overrides: dict | None = No
     app.register_blueprint(qa_api.bp)
     app.register_blueprint(system_api.bp)
     app.register_blueprint(auth_api.bp)
+    app.register_blueprint(sharing_api.bp)
 
-    if app.config.get("WARMUP", True):
+    if app.config.get("WARMUP", True) and runner.pending_count() == 0:
         threading.Thread(target=_warm_up, name="lectora-warmup", daemon=True).start()
+    elif app.config.get("WARMUP", True):
+        log.info("model warm-up skipped: processing queue is not empty")
 
     _register_middleware(app)
     _register_frontend(app)
@@ -94,17 +98,14 @@ def create_app(config_object: type[Config] = Config, overrides: dict | None = No
 def _warm_up() -> None:
     """Load heavy models in the background so the first upload is not a mystery."""
     try:
-        from .services.asr import AsrService
         from .services.embeddings import embeddings
-        from .services.reranker import reranker
 
-        log.info("warming up models…")
-        # Search models first: they make the first query feel instant, while the
-        # (slower) ASR model is only needed when a lecture is uploaded.
+        log.info("warming up the search model…")
+        # Keep startup light: Vosk is loaded by the pipeline instance on demand
+        # and the optional reranker is loaded by the first search. Loading all
+        # three here causes severe paging on machines with 16 GB RAM.
         embeddings.warm_up()
-        reranker.warm_up()
-        AsrService().warm_up()
-        log.info("models are warm")
+        log.info("search model is warm")
     except Exception:  # pragma: no cover - never block the app
         log.exception("warm-up failed (continuing)")
 
@@ -120,7 +121,7 @@ def _register_middleware(app: Flask) -> None:
         except (ValueError, TypeError):
             session.clear()
             g.user_id = None
-        public_api = request.path in {"/api/health", "/api/system/info"} or request.path.startswith("/api/auth/")
+        public_api = request.path in {"/api/health", "/api/system/info"} or request.path.startswith(("/api/auth/", "/api/public/", "/api/shared/"))
         if request.path.startswith("/api/") and not public_api and g.user_id is None:
             return jsonify({"error": {"code": "authentication_required", "message": "Требуется вход"}}), 401
 

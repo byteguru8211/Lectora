@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import gc
 import logging
 import math
 import threading
@@ -111,6 +112,14 @@ class AsrService:
 
     def is_loaded(self, profile: str) -> bool:
         return self._model is not None and self._model_profile == profile
+
+    def unload(self) -> None:
+        """Release Vosk before the embedding model is used to avoid paging."""
+        with self._lock:
+            self._model = None
+            self._model_profile = None
+        gc.collect()
+        log.info("Vosk model released")
 
     # -- transcription --------------------------------------------------
     def transcribe(

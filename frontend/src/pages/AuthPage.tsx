@@ -9,6 +9,7 @@ export function AuthPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"student" | "teacher">("student");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -17,7 +18,7 @@ export function AuthPage() {
     setBusy(true);
     setError(null);
     try {
-      if (mode === "register") await auth.register(name, email, password);
+      if (mode === "register") await auth.register(name, email, password, role);
       else await auth.login(email, password);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Не удалось выполнить вход");
@@ -42,6 +43,7 @@ export function AuthPage() {
           <div><span className="auth-card__eyebrow">{mode === "login" ? "С возвращением" : "Начнём работу"}</span><h2>{mode === "login" ? "Вход в аккаунт" : "Создать аккаунт"}</h2><p>{mode === "login" ? "Войдите, чтобы открыть свою библиотеку." : "Ваши видео будут доступны только вам."}</p></div>
           {error && <div className="error-box">{error}</div>}
           {mode === "register" && <label className="field"><span>Имя</span><input className="input" value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" required minLength={2} placeholder="Как к вам обращаться" /></label>}
+          {mode === "register" && <div className="field"><span>Кто вы?</span><div className="role-options"><button type="button" className={role === "student" ? "is-active" : ""} onClick={() => setRole("student")}>Студент</button><button type="button" className={role === "teacher" ? "is-active" : ""} onClick={() => setRole("teacher")}>Преподаватель</button></div></div>}
           <label className="field"><span>Email</span><input className="input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required placeholder="name@example.com" /></label>
           <label className="field"><span>Пароль</span><input className="input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={8} placeholder="Не менее 8 символов" /></label>
           <button className="btn btn--primary auth-submit" disabled={busy}>{busy && <span className="spinner" />}{mode === "login" ? "Войти" : "Зарегистрироваться"}</button>

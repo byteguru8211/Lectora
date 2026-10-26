@@ -134,6 +134,15 @@ class MediaService:
                 "ffmpeg_missing",
             )
 
+    def supports_nvenc(self) -> bool:
+        if not self.tools.ffmpeg:
+            return False
+        try:
+            result = _run([self.tools.ffmpeg, "-hide_banner", "-encoders"], timeout=20)
+            return result.returncode == 0 and "h264_nvenc" in result.stdout
+        except Exception:
+            return False
+
     def probe(self, path: Path) -> MediaInfo:
         self.require()
         proc = _run(
@@ -220,6 +229,7 @@ class MediaService:
                     on_progress(int(raw) / 1_000_000)
         _, stderr = proc.communicate(timeout=3600)
         if proc.returncode != 0 or not target.exists():
+            target.unlink(missing_ok=True)
             raise ApiError(
                 "Не удалось извлечь аудиодорожку из видео.",
                 422,
@@ -250,7 +260,7 @@ class MediaService:
         log.warning("thumbnail generation failed for %s", source)
         return None
 
-    def ensure_playable(self, source: Path, workdir: Path) -> tuple[Path, MediaInfo]:
+    def ensure_playable(self, source: Path, workdir: Path, *, use_gpu: bool = False) -> tuple[Path, MediaInfo]:
         """Return a browser-playable file (transcoding exotic codecs when needed)."""
         info = self.probe(source)
         suffix = source.suffix.lower()
@@ -260,16 +270,29 @@ class MediaService:
             return source, info
 
         target = workdir / "playable.mp4"
-        args = [
+        base_args = [
             self.tools.ffmpeg, "-hide_banner", "-nostdin", "-y",
             "-i", str(source),
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         ]
-        args += ["-c:a", "aac", "-b:a", "160k"] if info.has_audio else ["-an"]
-        args += [str(target)]
-        proc = _run(args, timeout=7200)
+        audio_args = ["-c:a", "aac", "-b:a", "160k"] if info.has_audio else ["-an"]
+        proc = None
+        if use_gpu:
+            gpu_args = base_args + [
+                "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            ] + audio_args + [str(target)]
+            proc = _run(gpu_args, timeout=7200)
+            if proc.returncode != 0:
+                target.unlink(missing_ok=True)
+                log.warning("NVENC unavailable, retrying video transcode on CPU")
+        if proc is None or proc.returncode != 0:
+            cpu_args = base_args + [
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+            ] + audio_args + [str(target)]
+            proc = _run(cpu_args, timeout=7200)
         if proc.returncode != 0 or not target.exists():
+            target.unlink(missing_ok=True)
             raise ApiError(
                 "Не удалось перекодировать видео в MP4.",
                 422,

@@ -11,9 +11,10 @@ interface Props {
   onSeek: (seconds: number) => void;
   onHits: (hits: SearchHit[]) => void;
   onQueryChange: (query: string) => void;
+  searchRequest?: (query: string) => Promise<import("../api/types").SearchResponse>;
 }
 
-export function SearchPane({ lectureId, keywords, initialQuery, onSeek, onHits, onQueryChange }: Props) {
+export function SearchPane({ lectureId, keywords, initialQuery, onSeek, onHits, onQueryChange, searchRequest }: Props) {
   const [query, setQuery] = useState(initialQuery ?? "");
   const [results, setResults] = useState<SearchHit[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +40,7 @@ export function SearchPane({ lectureId, keywords, initialQuery, onSeek, onHits, 
     setLoading(true);
     setError(null);
     try {
-      const response = await api.search(text, lectureId, 12);
+      const response = await (searchRequest ? searchRequest(text) : api.search(text, lectureId, 12));
       setResults(response.results);
       setMeta({ took: response.took_ms, reranked: response.reranked });
       onHits(response.results);

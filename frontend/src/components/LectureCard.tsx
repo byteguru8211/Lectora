@@ -1,20 +1,22 @@
 import { Link } from "react-router-dom";
 import type { LectureCard as LectureCardType } from "../api/types";
 import { formatDate, formatDurationLong } from "../utils/format";
-import { ClockIcon, PlayIcon, TrashIcon } from "./icons";
+import { ClockIcon, LinkIcon, PlayIcon, TrashIcon } from "./icons";
 import { StatusBadge } from "./StatusBadge";
 
 interface Props {
   lecture: LectureCardType;
   onDelete?: (lecture: LectureCardType) => void;
+  onShare?: (lecture: LectureCardType) => void;
+  href?: string;
 }
 
-export function LectureCard({ lecture, onDelete }: Props) {
+export function LectureCard({ lecture, onDelete, onShare, href }: Props) {
   const isProcessing = lecture.status === "queued" || lecture.status === "processing";
 
   return (
     <article className="card lecture-card">
-      <Link to={`/lectures/${lecture.id}`} className="lecture-card__media" aria-label={lecture.title}>
+      <Link to={href ?? `/lectures/${lecture.id}`} className="lecture-card__media" aria-label={lecture.title}>
         {lecture.thumbnail_url ? (
           <img src={lecture.thumbnail_url} alt="" loading="lazy" />
         ) : (
@@ -38,7 +40,7 @@ export function LectureCard({ lecture, onDelete }: Props) {
       </Link>
 
       <div className="lecture-card__body">
-        <Link to={`/lectures/${lecture.id}`}>
+        <Link to={href ?? `/lectures/${lecture.id}`}>
           <h3 className="lecture-card__title">{lecture.title}</h3>
         </Link>
 
@@ -84,6 +86,7 @@ export function LectureCard({ lecture, onDelete }: Props) {
               <TrashIcon size={14} />
             </button>
           )}
+          {onShare && <button className="icon-btn" style={{ width: 28, height: 28 }} onClick={(event) => { event.preventDefault(); onShare(lecture); }} aria-label={`Поделиться «${lecture.title}»`} title="Скопировать приватную ссылку"><LinkIcon size={14} /></button>}
         </div>
       </div>
     </article>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation, useParams } from "react-router-dom";
 import { AppShell } from "./components/AppShell";
 import { CommandPalette } from "./components/CommandPalette";
 import { UploadModal } from "./components/UploadModal";
@@ -12,9 +12,12 @@ import { SearchPage } from "./pages/SearchPage";
 import { AccountPage } from "./pages/AccountPage";
 import { AuthPage } from "./pages/AuthPage";
 import { useAuth } from "./context/AuthContext";
+import { PublicLibraryPage } from "./pages/PublicLibraryPage";
+import { SharedLecturePage, SharedPage } from "./pages/SharedPage";
 
 export default function App() {
   const auth = useAuth();
+  const location = useLocation();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
@@ -39,6 +42,7 @@ export default function App() {
 
   const ui = useMemo<UiActions>(() => ({ openUpload, openPalette }), [openUpload, openPalette]);
 
+  if (location.pathname.startsWith("/shared/")) return <ToastProvider><Routes><Route path="/shared/videos/:token" element={<SharedLecturePage />} /><Route path="/shared/groups/:token" element={<SharedPage groupMode />} /><Route path="/shared/groups/:token/lectures/:lectureId" element={<SharedLecturePage groupMode />} /></Routes></ToastProvider>;
   if (auth.loading) return <div className="app-loader"><span className="spinner" /></div>;
   if (!auth.user) return <AuthPage />;
 
@@ -51,6 +55,8 @@ export default function App() {
             <Route path="/lectures/:lectureId" element={<LecturePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/public" element={<PublicLibraryPage />} />
+            <Route path="/public/lectures/:lectureId" element={<PublicLectureRoute />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </AppShell>
@@ -60,4 +66,9 @@ export default function App() {
       </UiProvider>
     </ToastProvider>
   );
+}
+
+function PublicLectureRoute() {
+  const { lectureId = "" } = useParams();
+  return <LecturePage accessBase={`/api/public/lectures/${lectureId}`} backTo="/public" backLabel="Публичные видео" />;
 }

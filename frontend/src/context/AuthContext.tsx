@@ -6,7 +6,7 @@ interface AuthValue {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string, role: "student" | "teacher") => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const response = await api.login(email, password);
     setUser(response.user);
   }, []);
-  const register = useCallback(async (name: string, email: string, password: string) => {
-    const response = await api.register(name, email, password);
+  const register = useCallback(async (name: string, email: string, password: string, role: "student" | "teacher") => {
+    const response = await api.register(name, email, password, role);
     setUser(response.user);
   }, []);
   const logout = useCallback(async () => {

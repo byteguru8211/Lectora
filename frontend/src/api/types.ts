@@ -4,6 +4,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  role: "student" | "teacher";
   created_at: string | null;
 }
 
@@ -14,6 +15,9 @@ export interface LectureCard {
   description: string | null;
   subject: string | null;
   topic: string | null;
+  visibility: "private" | "public";
+  group_id: string | null;
+  share_token: string | null;
   status: LectureStatus;
   stage: string | null;
   stage_label: string | null;
@@ -25,6 +29,8 @@ export interface LectureCard {
   source_type: "upload" | "url";
   source_url: string | null;
   asr_profile: "accurate" | "fast";
+  asr_engine: "vosk" | "whisper";
+  use_gpu: boolean;
   segment_count: number;
   chunk_count: number;
   word_count: number;
@@ -36,6 +42,16 @@ export interface LectureCard {
   created_at: string | null;
   processed_at: string | null;
   processing_ms: number | null;
+}
+
+export interface VideoGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: "private" | "public";
+  share_token: string | null;
+  video_count: number;
+  created_at: string | null;
 }
 
 export interface Section {
@@ -151,6 +167,10 @@ export interface HealthResponse {
     url_import: HealthCheck;
   };
   took_ms: number;
+}
+
+export interface SystemInfo {
+  acceleration: { cuda: boolean; cuda_device: string | null; nvenc: boolean };
 }
 
 export interface Stats {

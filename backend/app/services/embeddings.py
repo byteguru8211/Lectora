@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import logging
 import os
 import threading
@@ -19,6 +20,7 @@ log = logging.getLogger(__name__)
 class EmbeddingService:
     def __init__(self) -> None:
         self._model = None
+        self._device: str | None = None
         self._lock = threading.Lock()
         self._query_cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self._cache_limit = 256
@@ -34,12 +36,37 @@ class EmbeddingService:
             return False
         return any(path.glob("*.bin")) or any(path.glob("*.safetensors"))
 
-    def load(self):
-        if self._model is not None:
+    @staticmethod
+    def resolve_device(requested: str | None = None) -> str:
+        device = (requested or Config.EMBEDDING_DEVICE or "cpu").lower()
+        if device.startswith("cuda"):
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    return device
+            except Exception:
+                pass
+            log.warning("CUDA requested but unavailable; falling back to CPU")
+            return "cpu"
+        return device
+
+    def load(self, device: str | None = None):
+        target_device = self.resolve_device(device)
+        if self._model is not None and self._device == target_device:
             return self._model
         with self._lock:
-            if self._model is not None:
+            if self._model is not None and self._device == target_device:
                 return self._model
+            if self._model is not None:
+                self._model = None
+                self._device = None
+                gc.collect()
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                except Exception:
+                    pass
             path = self.model_path
             if not path.is_dir():
                 raise ApiError(
@@ -52,12 +79,13 @@ class EmbeddingService:
                 import torch
 
                 torch.set_num_threads(max(1, min(8, os.cpu_count() or 4)))
-                log.info("loading embedding model from %s", path)
+                log.info("loading embedding model from %s on %s", path, target_device)
                 model = SentenceTransformer(
-                    str(path), device=Config.EMBEDDING_DEVICE
+                    str(path), device=target_device
                 )
                 model.max_seq_length = 1024
                 self._model = model
+                self._device = target_device
                 log.info("embedding model ready (dim=%s)", model.get_sentence_embedding_dimension())
             except Exception as exc:  # pragma: no cover - depends on weights
                 log.exception("failed to load embedding model")
@@ -89,11 +117,12 @@ class EmbeddingService:
         texts: list[str],
         *,
         batch_size: int | None = None,
+        device: str | None = None,
         on_progress=None,
     ) -> np.ndarray:
         if not texts:
             return np.zeros((0, self.dimension), dtype=np.float32)
-        model = self.load()
+        model = self.load(device)
         vectors: list[np.ndarray] = []
         batch = batch_size or Config.EMBEDDING_BATCH_SIZE
         total = len(texts)

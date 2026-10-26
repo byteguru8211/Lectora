@@ -5,6 +5,7 @@ waitress>=3.0,<4
 python-dotenv>=1.0,<2
 numpy>=2.0,<3
 vosk>=0.3.45,<0.4
+faster-whisper>=1.1,<2
 sentence-transformers>=3.0,<7
 torch>=2.2,<3
 requests>=2.31,<3

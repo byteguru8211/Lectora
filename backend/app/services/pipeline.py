@@ -42,7 +42,9 @@ from .llm import llm
 from .media import MediaService
 from .search import search_service
 from .storage import Storage
+from .storage import free_disk_gb
 from .summarizer import summarizer
+from .whisper_asr import WhisperAsrService
 
 log = logging.getLogger(__name__)
 
@@ -104,6 +106,7 @@ class Pipeline:
     def __init__(self, storage: Storage) -> None:
         self.storage = storage
         self.asr = AsrService()
+        self.whisper = WhisperAsrService()
 
     # -- entry point ----------------------------------------------------
     def process(self, session, lecture_id: uuid.UUID, job_id: int | None = None) -> None:
@@ -124,6 +127,15 @@ class Pipeline:
             media.require()
             media_dir = Path(self.storage.lecture_dir(lecture.storage_key))
 
+            free_before_gb = free_disk_gb(media_dir)
+            if free_before_gb is not None and free_before_gb < Config.MIN_FREE_DISK_GB:
+                raise ApiError(
+                    f"Недостаточно места для обработки: свободно {free_before_gb:.1f} ГБ, "
+                    f"нужно не менее {Config.MIN_FREE_DISK_GB:.1f} ГБ.",
+                    507,
+                    "insufficient_storage",
+                )
+
             # -- URL import: the download is part of the pipeline ---------
             existing = self.storage.path_for(lecture.video_path)
             if lecture.source_type == "url" and (existing is None or not Path(existing).exists()):
@@ -142,11 +154,22 @@ class Pipeline:
             if source is None or not Path(source).exists():
                 raise ApiError("Файл лекции не найден в хранилище", 500, "file_missing")
 
+            source_size_gb = Path(source).stat().st_size / (1024**3)
+            free_gb = free_disk_gb(Path(source).parent)
+            required_gb = max(Config.MIN_FREE_DISK_GB, source_size_gb * 2.5 + 0.5)
+            if free_gb is not None and free_gb < required_gb:
+                raise ApiError(
+                    f"Недостаточно места для обработки: свободно {free_gb:.1f} ГБ, "
+                    f"нужно не менее {required_gb:.1f} ГБ.",
+                    507,
+                    "insufficient_storage",
+                )
+
             info = media.probe(Path(source))
             duration = float(info.duration or 0.0)
 
             progress.update("transcode", 4.0, force=True)
-            playable, info = media.ensure_playable(Path(source), media_dir)
+            playable, info = media.ensure_playable(Path(source), media_dir, use_gpu=lecture.use_gpu)
             if playable != Path(source):
                 lecture.video_path = self.storage.relative(playable)
                 Path(source).unlink(missing_ok=True)
@@ -184,16 +207,44 @@ class Pipeline:
             lecture.audio_path = self.storage.relative(audio_path)
 
             progress.update("transcribe", 18.0, force=True)
-            if not self.asr.is_loaded(lecture.asr_profile):
+            if lecture.asr_engine == "vosk" and not self.asr.is_loaded(lecture.asr_profile):
                 progress.update("model", 18.5, force=True)
-            eta = self.asr.eta_seconds(duration, lecture.asr_profile)
-            log.info("ASR %s, %.0fs audio, ~%ss ETA", lecture.asr_profile, duration, eta)
-            transcription = self.asr.transcribe(
-                audio_path,
-                profile=lecture.asr_profile,
-                on_progress=lambda ratio: progress.update("transcribe", 18.0 + 50.0 * ratio),
-                duration_hint=duration,
-            )
+            log.info("ASR engine=%s profile=%s gpu=%s", lecture.asr_engine, lecture.asr_profile, lecture.use_gpu)
+            try:
+                if lecture.asr_engine == "whisper":
+                    try:
+                        transcription = self.whisper.transcribe(
+                            audio_path,
+                            use_gpu=lecture.use_gpu,
+                            on_progress=lambda ratio: progress.update("transcribe", 18.0 + 50.0 * ratio),
+                            duration_hint=duration,
+                        )
+                    except Exception as exc:
+                        log.warning("Whisper failed (%s); falling back to Vosk", exc)
+                        progress.update("model", 18.5, force=True)
+                        transcription = self.asr.transcribe(
+                            audio_path,
+                            profile=lecture.asr_profile,
+                            on_progress=lambda ratio: progress.update("transcribe", 18.0 + 50.0 * ratio),
+                            duration_hint=duration,
+                        )
+                        lecture.asr_engine = "vosk"
+                else:
+                    transcription = self.asr.transcribe(
+                        audio_path,
+                        profile=lecture.asr_profile,
+                        on_progress=lambda ratio: progress.update("transcribe", 18.0 + 50.0 * ratio),
+                        duration_hint=duration,
+                    )
+            finally:
+                # PCM WAV is only an ASR intermediate (~115 MB per hour). It
+                # must not remain in the permanent lecture library.
+                audio_path.unlink(missing_ok=True)
+                lecture.audio_path = None
+                session.commit()
+                if not Config.ASR_KEEP_WARM:
+                    self.asr.unload()
+                    self.whisper.unload()
             duration = duration or transcription.duration_sec
 
             segments: list[Segment] = self._punctuate(transcription.segments)
@@ -212,6 +263,7 @@ class Pipeline:
 
             vectors = embeddings.encode_documents(
                 [chunk.text for chunk in chunks],
+                device="cuda" if lecture.use_gpu else "cpu",
                 on_progress=lambda ratio: progress.update("embed", 70.0 + 12.0 * ratio),
             )
 

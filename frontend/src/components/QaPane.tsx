@@ -8,9 +8,11 @@ interface Props {
   lectureId: string;
   suggestions: string[];
   onSeek: (seconds: number) => void;
+  askRequest?: (question: string) => Promise<import("../api/types").QaResponse>;
+  hideHistory?: boolean;
 }
 
-export function QaPane({ lectureId, suggestions, onSeek }: Props) {
+export function QaPane({ lectureId, suggestions, onSeek, askRequest, hideHistory = false }: Props) {
   const toast = useToast();
   const [messages, setMessages] = useState<QaMessage[]>([]);
   const [question, setQuestion] = useState("");
@@ -20,6 +22,11 @@ export function QaPane({ lectureId, suggestions, onSeek }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    if (hideHistory) {
+      setLoadingHistory(false);
+      setMessages([]);
+      return;
+    }
     api
       .qaHistory(lectureId)
       .then((response) => {
@@ -32,7 +39,7 @@ export function QaPane({ lectureId, suggestions, onSeek }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [lectureId]);
+  }, [lectureId, hideHistory]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -53,7 +60,7 @@ export function QaPane({ lectureId, suggestions, onSeek }: Props) {
     };
     setMessages((current) => [...current, optimistic]);
     try {
-      const response = await api.ask(lectureId, value);
+      const response = await (askRequest ? askRequest(value) : api.ask(lectureId, value));
       setMessages((current) => [
         ...current.filter((message) => message.id !== optimistic.id),
         response.question,

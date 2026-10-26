@@ -27,6 +27,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <NavLink to="/account" className={({ isActive }) => `nav__link ${isActive ? "is-active" : ""}`}>
               Мой кабинет
             </NavLink>
+            <NavLink to="/public" className={({ isActive }) => `nav__link ${isActive ? "is-active" : ""}`}>
+              Публичные видео
+            </NavLink>
             <a
               className="nav__link"
               href="#about"

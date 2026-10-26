@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, uploadLecture } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { formatBytes } from "../utils/format";
-import { CloseIcon, DownloadIcon, LinkIcon, UploadIcon } from "./icons";
+import { CloseIcon, DownloadIcon, LinkIcon, SparkIcon, UploadIcon } from "./icons";
+import type { VideoGroup } from "../api/types";
 
 interface Props {
   open: boolean;
@@ -23,6 +24,14 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [profile, setProfile] = useState<"accurate" | "fast">("accurate");
+  const [asrEngine, setAsrEngine] = useState<"vosk" | "whisper">("whisper");
+  const [useGpu, setUseGpu] = useState(() => localStorage.getItem("lectora-use-gpu") !== "false");
+  const [gpuStatus, setGpuStatus] = useState("Проверяем доступное ускорение…");
+  const [visibility, setVisibility] = useState<"private" | "public">("private");
+  const [groups, setGroups] = useState<VideoGroup[]>([]);
+  const [groupId, setGroupId] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupVisibility, setNewGroupVisibility] = useState<"private" | "public">("private");
   const [url, setUrl] = useState("");
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -39,12 +48,29 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setError(null);
     setProgress(0);
     setBusy(false);
+    setVisibility("private");
+    setGroupId("");
+    setNewGroupName("");
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busy) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, initialMode, busy, onClose]);
+
+  useEffect(() => {
+    if (open) api.groups().then((response) => setGroups(response.items)).catch(() => setGroups([]));
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    api.systemInfo().then(({ acceleration }) => {
+      if (acceleration.cuda && acceleration.nvenc) setGpuStatus(`${acceleration.cuda_device ?? "NVIDIA GPU"}: CUDA и NVENC доступны`);
+      else if (acceleration.nvenc) setGpuStatus("NVENC доступен; для CUDA нужна GPU-сборка PyTorch");
+      else if (acceleration.cuda) setGpuStatus(`${acceleration.cuda_device ?? "CUDA"}: ускорение индекса доступно`);
+      else setGpuStatus("GPU-ускорение не найдено — будет использован CPU");
+    }).catch(() => setGpuStatus("Не удалось проверить GPU — доступен автоматический откат на CPU"));
+  }, [open]);
 
   const pickFile = useCallback((next: File | null) => {
     if (!next) return;
@@ -62,7 +88,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setProgress(0);
     try {
       const result = await uploadLecture(
-        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile },
+        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile, asrEngine, useGpu, visibility, groupId: groupId || undefined },
         setProgress,
       );
       toast.success("Видео загружено, начинаем обработку");
@@ -85,7 +111,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile);
+      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile, useGpu, asrEngine, visibility, groupId || undefined);
       toast.success("Ссылка принята, видео скачивается");
       onClose();
       navigate(`/lectures/${result.id}`);
@@ -215,6 +241,29 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
             />
           </div>
 
+          <div className="upload-access-grid">
+            <div className="field">
+              <span className="field__label">Доступ к видео</span>
+              <select className="select" value={visibility} onChange={(event) => setVisibility(event.target.value as "private" | "public")} disabled={busy}>
+                <option value="private">Приватное</option><option value="public">Публичное</option>
+              </select>
+              <p className="small muted">Публичное видео появится в общей библиотеке.</p>
+            </div>
+            <div className="field">
+              <span className="field__label">Моя группа</span>
+              <select className="select" value={groupId} onChange={(event) => setGroupId(event.target.value)} disabled={busy}>
+                <option value="">Без группы</option>{groups.map((group) => <option value={group.id} key={group.id}>{group.name} · {group.visibility === "public" ? "публичная" : "приватная"}</option>)}
+              </select>
+              <p className="small muted">Видео можно объединять в собственные коллекции.</p>
+            </div>
+          </div>
+
+          <div className="new-group-row">
+            <input className="input" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Новая группа…" disabled={busy} />
+            <select className="select" value={newGroupVisibility} onChange={(event) => setNewGroupVisibility(event.target.value as "private" | "public")} disabled={busy}><option value="private">Приватная</option><option value="public">Публичная</option></select>
+            <button className="btn btn--sm" disabled={busy || newGroupName.trim().length < 2} onClick={async () => { try { const group = await api.createGroup(newGroupName.trim(), newGroupVisibility); setGroups((items) => [group, ...items]); setGroupId(group.id); setNewGroupName(""); toast.success("Группа создана"); } catch (err) { toast.error(err instanceof ApiError ? err.message : "Не удалось создать группу"); } }}>Создать</button>
+          </div>
+
           <div className="field">
             <label className="field__label" htmlFor="lecture-desc">
               Описание <span style={{ textTransform: "none", fontWeight: 400 }}>(необязательно)</span>
@@ -230,7 +279,20 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
           </div>
 
           <div className="field">
-            <span className="field__label">Качество распознавания</span>
+            <span className="field__label">Движок распознавания</span>
+            <div className="asr-options">
+              <button className={`asr-option ${asrEngine === "whisper" ? "is-active" : ""}`} onClick={() => { setAsrEngine("whisper"); setUseGpu(true); }} disabled={busy}>
+                <SparkIcon size={17} /><span><strong>Whisper GPU</strong><small>Быстрее и точнее, рекомендуется</small></span>
+              </button>
+              <button className={`asr-option ${asrEngine === "vosk" ? "is-active" : ""}`} onClick={() => setAsrEngine("vosk")} disabled={busy}>
+                <DownloadIcon size={17} /><span><strong>Vosk CPU</strong><small>Экономный резервный режим</small></span>
+              </button>
+            </div>
+            {asrEngine === "whisper" && <p className="small muted">При первом запуске модель small загрузится автоматически. При ошибке Lectora продолжит обработку через Vosk.</p>}
+          </div>
+
+          {asrEngine === "vosk" && <div className="field">
+            <span className="field__label">Качество Vosk</span>
             <div className="row" style={{ gap: 8 }}>
               <button
                 className={`chip chip--button ${profile === "accurate" ? "is-active" : ""}`}
@@ -252,7 +314,28 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
             <p className="small muted" style={{ marginTop: 6 }}>
               Точный режим медленнее примерно в 3 раза. Для демонстрации подойдёт быстрый.
             </p>
-          </div>
+          </div>}
+
+          <label className={`gpu-option ${useGpu ? "is-active" : ""}`}>
+            <span className="gpu-option__icon"><SparkIcon size={18} /></span>
+            <span className="gpu-option__text">
+              <strong>Использовать видеокарту</strong>
+              <small>{gpuStatus}</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={useGpu}
+              disabled={busy}
+              onChange={(event) => {
+                setUseGpu(event.target.checked);
+                localStorage.setItem("lectora-use-gpu", String(event.target.checked));
+              }}
+            />
+            <span className="gpu-switch" aria-hidden="true" />
+          </label>
+          <p className="small muted" style={{ marginTop: -10 }}>
+            Распознавание Vosk продолжит работать на процессоре. При недоступной CUDA включится CPU автоматически.
+          </p>
 
           {busy && mode === "file" && (
             <div>

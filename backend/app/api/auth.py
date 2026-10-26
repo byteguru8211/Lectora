@@ -18,7 +18,7 @@ EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def user_dict(user: User) -> dict:
-    return {"id": str(user.id), "name": user.name, "email": user.email, "created_at": user.created_at.isoformat() if user.created_at else None}
+    return {"id": str(user.id), "name": user.name, "email": user.email, "role": user.role, "created_at": user.created_at.isoformat() if user.created_at else None}
 
 
 @bp.post("/register")
@@ -27,19 +27,22 @@ def register():
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
+    role = (data.get("role") or "student").strip().lower()
     if len(name) < 2 or len(name) > 120:
         raise ApiError("Укажите имя длиной от 2 до 120 символов", 400, "bad_name")
     if not EMAIL_RE.match(email) or len(email) > 255:
         raise ApiError("Укажите корректный email", 400, "bad_email")
     if len(password) < 8:
         raise ApiError("Пароль должен содержать не менее 8 символов", 400, "weak_password")
+    if role not in {"student", "teacher"}:
+        raise ApiError("Выберите роль: студент или преподаватель", 400, "bad_role")
 
     db_session = db.session()
     try:
         if db_session.query(User).filter(func.lower(User.email) == email).first():
             raise ApiError("Аккаунт с таким email уже существует", 409, "email_exists")
         first_user = (db_session.query(func.count(User.id)).scalar() or 0) == 0
-        user = User(name=name, email=email, password_hash=generate_password_hash(password))
+        user = User(name=name, email=email, role=role, password_hash=generate_password_hash(password))
         db_session.add(user)
         db_session.flush()
         # Preserve installations created before accounts existed.

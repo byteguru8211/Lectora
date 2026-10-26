@@ -60,6 +60,7 @@ class Config:
     CACHE_DIR = STORAGE_DIR / "cache"
     MAX_UPLOAD_MB = _int("MAX_UPLOAD_MB", 4096)
     MAX_CONTENT_LENGTH = MAX_UPLOAD_MB * 1024 * 1024
+    MIN_FREE_DISK_GB = _float("MIN_FREE_DISK_GB", 8.0)
 
     # --- database -----------------------------------------------------
     DATABASE_URL = os.getenv(
@@ -76,6 +77,10 @@ class Config:
     )
     ASR_MODEL_FAST = _path("ASR_MODEL_FAST", "models/vosk/vosk-model-small-ru-0.22")
     ASR_DEFAULT_PROFILE = os.getenv("ASR_DEFAULT_PROFILE", "accurate")
+    ASR_KEEP_WARM = _bool("ASR_KEEP_WARM", False)
+    WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+    WHISPER_MODEL_DIR = _path("WHISPER_MODEL_DIR", "models/whisper")
+    WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8_float16")
     ASR_SAMPLE_RATE = 16000
 
     EMBEDDING_MODEL_PATH = _path(

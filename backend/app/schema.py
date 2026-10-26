@@ -28,6 +28,15 @@ MIGRATIONS = (
     # 1.2.0: personal accounts and lecture ownership
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE",
     "ALTER TABLE search_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE",
+    # 1.3.0: per-video hardware acceleration preference
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS use_gpu BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS asr_engine VARCHAR(16) NOT NULL DEFAULT 'vosk'",
+    # 1.4.0: roles, user groups and sharing
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'student'",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS group_id UUID REFERENCES video_groups(id) ON DELETE SET NULL",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) NOT NULL DEFAULT 'private'",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS share_token VARCHAR(64)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_lectures_share_token ON lectures (share_token) WHERE share_token IS NOT NULL",
 )
 
 

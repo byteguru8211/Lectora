@@ -34,7 +34,13 @@ const TABS: { key: Tab; label: string; icon: typeof BookIcon }[] = [
   { key: "qa", label: "Вопросы", icon: ChatIcon },
 ];
 
-export function LecturePage() {
+interface LecturePageProps {
+  accessBase?: string;
+  backTo?: string;
+  backLabel?: string;
+}
+
+export function LecturePage({ accessBase, backTo = "/", backLabel = "Библиотека" }: LecturePageProps = {}) {
   const { lectureId = "" } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -77,10 +83,10 @@ export function LecturePage() {
     async (silent = false) => {
       try {
         if (!silent) setLoading(true);
-        const detail = await api.lecture(lectureId);
+        const detail = accessBase ? await api.accessLecture(accessBase) : await api.lecture(lectureId);
         setLecture(detail);
         if (detail.status === "ready") {
-          const transcript = await api.transcript(lectureId);
+          const transcript = accessBase ? await api.accessTranscript(accessBase) : await api.transcript(lectureId);
           setSegments(transcript.segments);
           setDuration((current) => current || transcript.duration_sec);
         }
@@ -93,7 +99,7 @@ export function LecturePage() {
         setLoading(false);
       }
     },
-    [lectureId, toast],
+    [lectureId, toast, accessBase],
   );
 
   useEffect(() => {
@@ -102,7 +108,7 @@ export function LecturePage() {
 
   // live processing progress
   useEffect(() => {
-    if (!lecture) return;
+    if (!lecture || accessBase) return;
     if (lecture.status === "ready" || lecture.status === "failed") return;
 
     const dispose = subscribeProgress(lecture.id, (payload) => {
@@ -123,7 +129,7 @@ export function LecturePage() {
       }
     });
     return dispose;
-  }, [lecture?.id, lecture?.status, refresh]);
+  }, [lecture?.id, lecture?.status, refresh, accessBase]);
 
   // explicit deep link ?t=123
   useEffect(() => {
@@ -141,7 +147,7 @@ export function LecturePage() {
   }, [duration]);
 
   const copyMomentLink = async () => {
-    const url = `${window.location.origin}/lectures/${lectureId}?t=${Math.floor(currentTime)}`;
+    const url = `${window.location.origin}${window.location.pathname}?t=${Math.floor(currentTime)}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success(`Ссылка на ${formatClock(currentTime)} скопирована`);
@@ -221,8 +227,8 @@ export function LecturePage() {
         </div>
         <div className="empty__title">Лекция не открылась</div>
         <p style={{ marginBottom: 18 }}>{error ?? "Возможно, она была удалена."}</p>
-        <Link className="btn" to="/">
-          <ArrowLeftIcon size={15} /> В библиотеку
+        <Link className="btn" to={backTo}>
+          <ArrowLeftIcon size={15} /> {backLabel}
         </Link>
       </div>
     );
@@ -238,8 +244,8 @@ export function LecturePage() {
     <>
       <div className="lecture-head">
         <div className="lecture-head__main">
-          <Link className="back-link" to="/">
-            <ArrowLeftIcon size={14} /> Библиотека
+          <Link className="back-link" to={backTo}>
+            <ArrowLeftIcon size={14} /> {backLabel}
           </Link>
           <h1 className="lecture-head__title">{lecture.title}</h1>
           <div className="lecture-meta">
@@ -269,7 +275,7 @@ export function LecturePage() {
           </div>
         </div>
 
-        <div className="row" style={{ gap: 8 }}>
+        {!accessBase && <div className="row" style={{ gap: 8 }}>
           <button className="btn btn--ghost btn--sm" onClick={() => setRenameOpen(true)}>
             <PencilIcon size={14} /> Переименовать
           </button>
@@ -279,7 +285,7 @@ export function LecturePage() {
           <button className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label="Удалить лекцию" title="Удалить">
             <TrashIcon size={16} />
           </button>
-        </div>
+        </div>}
       </div>
 
       {processing && (
@@ -439,10 +445,11 @@ export function LecturePage() {
                     onSeek={seek}
                     onHits={setHits}
                     onQueryChange={setTranscriptQuery}
+                    searchRequest={accessBase ? (query) => api.accessSearch(accessBase, query) : undefined}
                   />
                 )}
                 {tab === "qa" && (
-                  <QaPane lectureId={lecture.id} suggestions={suggestions} onSeek={seek} />
+                  <QaPane lectureId={lecture.id} suggestions={suggestions} onSeek={seek} hideHistory={Boolean(accessBase)} askRequest={accessBase ? (question) => api.accessQa(accessBase, question) : undefined} />
                 )}
               </div>
             </div>
@@ -450,7 +457,7 @@ export function LecturePage() {
         </aside>
       </div>
 
-      <ConfirmDialog
+      {!accessBase && <ConfirmDialog
         open={confirmDelete}
         title="Удалить лекцию?"
         description={`«${lecture.title}» будет удалена вместе с видео, транскриптом и индексом.`}
@@ -459,9 +466,9 @@ export function LecturePage() {
         busy={working}
         onClose={() => setConfirmDelete(false)}
         onConfirm={removeLecture}
-      />
+      />}
 
-      <ConfirmDialog
+      {!accessBase && <ConfirmDialog
         open={confirmReprocess}
         title="Переобработать лекцию?"
         description="Транскрипт, индекс, конспект и история вопросов будут построены заново. Текущие результаты заменятся новыми."
@@ -469,15 +476,15 @@ export function LecturePage() {
         busy={working}
         onClose={() => setConfirmReprocess(false)}
         onConfirm={reprocess}
-      />
+      />}
 
-      <RenameDialog
+      {!accessBase && <RenameDialog
         open={renameOpen}
         initialTitle={lecture.title}
         busy={renameBusy}
         onSave={renameLecture}
         onClose={() => setRenameOpen(false)}
-      />
+      />}
     </>
   );
 }

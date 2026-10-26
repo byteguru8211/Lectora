@@ -42,6 +42,19 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(String(16), default="student", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VideoGroup(Base):
+    __tablename__ = "video_groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(160), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    visibility: Mapped[str] = mapped_column(String(16), default="private", nullable=False, index=True)
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -52,6 +65,9 @@ class Lecture(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("video_groups.id", ondelete="SET NULL"), index=True)
+    visibility: Mapped[str] = mapped_column(String(16), default="private", nullable=False, index=True)
+    share_token: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     title_auto: Mapped[bool] = mapped_column(Boolean, default=False)
     description: Mapped[str | None] = mapped_column(Text)
@@ -73,6 +89,8 @@ class Lecture(Base):
     height: Mapped[int | None] = mapped_column(Integer)
     language: Mapped[str] = mapped_column(String(8), default="ru")
     asr_profile: Mapped[str] = mapped_column(String(16), default="accurate")
+    asr_engine: Mapped[str] = mapped_column(String(16), default="vosk")
+    use_gpu: Mapped[bool] = mapped_column(Boolean, default=False)
 
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     stage: Mapped[str | None] = mapped_column(String(32))

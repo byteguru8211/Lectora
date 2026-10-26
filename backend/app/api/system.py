@@ -68,6 +68,13 @@ def health():
 def info():
     asr = AsrService()
     media = MediaService()
+    try:
+        import torch
+        cuda_available = bool(torch.cuda.is_available())
+        cuda_device = torch.cuda.get_device_name(0) if cuda_available else None
+    except Exception:
+        cuda_available = False
+        cuda_device = None
     return jsonify(
         {
             "name": "Lectora",
@@ -99,6 +106,11 @@ def info():
                 "ffmpeg": media.tools.ffmpeg,
                 "ffprobe": media.tools.ffprobe,
                 "yt_dlp": media.tools.ytdlp,
+            },
+            "acceleration": {
+                "cuda": cuda_available,
+                "cuda_device": cuda_device,
+                "nvenc": media.supports_nvenc(),
             },
         }
     )

@@ -1,5 +1,6 @@
 ﻿# Подготовка окружения Lectora: venv, зависимости, база, фронтенд.
 # Запуск:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+param([switch]$Cuda)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -7,24 +8,50 @@ Set-Location $root
 function Write-Step($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 
 Write-Step "Проверяем Python и Node"
-$pythonOk = $false
-foreach ($candidate in @("python", "py")) {
+$pythonExe = $null
+foreach ($versionFlag in @("-3.12", "-3.11")) {
   try {
-    $version = & $candidate -c "import sys; print('.'.join(map(str, sys.version_info[:2])))" 2>$null
-    if ($version -eq "3.12") { $pythonOk = $true; Write-Host "Python $version OK"; break }
+    $candidate = & py $versionFlag -c "import sys; print(sys.executable)" 2>$null
+    if ($LASTEXITCODE -eq 0 -and (Test-Path $candidate)) {
+      $pythonExe = $candidate
+      $version = & $pythonExe -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
+      Write-Host "Python $version OK ($pythonExe)"
+      break
+    }
   } catch { }
 }
-if (-not $pythonOk) { Write-Warning "Нужен Python 3.12 в PATH (текущая версия может не подойти для vosk/torch)" }
+if (-not $pythonExe) { Write-Error "Установите Python 3.12 или 3.11: Python 3.14 пока несовместим с CUDA-сборкой PyTorch"; exit 1 }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error "Node.js не найден в PATH"; exit 1 }
 Write-Host "Node $(node -v) OK"
 
 Write-Step "Виртуальное окружение и зависимости Python"
+if (Test-Path ".venv\Scripts\python.exe") {
+  $venvVersion = & ".venv\Scripts\python.exe" -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
+  if ($venvVersion -notin @("3.11", "3.12")) {
+    $backup = ".venv-python$($venvVersion.Replace('.', ''))-backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
+    Write-Warning "Текущее окружение использует Python $venvVersion; переносим его в $backup"
+    Move-Item -LiteralPath ".venv" -Destination $backup
+  }
+}
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
-  python -m venv .venv
+  & $pythonExe -m venv .venv
+  if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось создать .venv"; exit 1 }
 }
 & ".venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
-& ".venv\Scripts\python.exe" -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось обновить pip"; exit 1 }
+if ($Cuda) {
+  Write-Host "Устанавливаем PyTorch с CUDA для NVIDIA GPU"
+  & ".venv\Scripts\python.exe" -m pip install --upgrade --quiet torch --index-url https://download.pytorch.org/whl/cu128
+} else {
+  & ".venv\Scripts\python.exe" -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+}
+if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить PyTorch"; exit 1 }
 & ".venv\Scripts\python.exe" -m pip install --quiet -r backend\requirements.txt
+if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить зависимости backend"; exit 1 }
+if ($Cuda) {
+  & ".venv\Scripts\python.exe" -c "import sys, torch; print('Python', sys.version.split()[0]); print('PyTorch', torch.__version__); print('GPU', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'НЕ ОБНАРУЖЕНА'); raise SystemExit(0 if torch.cuda.is_available() else 2)"
+  if ($LASTEXITCODE -ne 0) { Write-Error "CUDA не активировалась. Проверьте драйвер NVIDIA и совместимость PyTorch"; exit 1 }
+}
 Write-Host "Зависимости установлены"
 
 Write-Step "Конфигурация"

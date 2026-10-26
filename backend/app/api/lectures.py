@@ -14,11 +14,12 @@ from sqlalchemy import func, update
 from ..config import Config
 from ..errors import ApiError
 from ..extensions import db
-from ..models import Job, Lecture, Section, TranscriptSegment
+from ..models import Job, Lecture, Section, TranscriptSegment, VideoGroup
 from ..serializers import job_dict, lecture_card, lecture_detail, segment_dict
 from ..services.pipeline import STAGE_LABELS
 from ..services.search import search_service
 from ..services.asr import AsrService
+from ..services.storage import free_disk_gb
 from . import get_lecture_or_404, job_runner, storage
 
 bp = Blueprint("lectures", __name__, url_prefix="/api/lectures")
@@ -48,6 +49,29 @@ def _parse_profile(raw: str | None) -> str:
             {"available": available},
         )
     return profile
+
+
+def _parse_engine(raw: str | None) -> str:
+    engine = (raw or "vosk").strip().lower()
+    if engine not in {"vosk", "whisper"}:
+        raise ApiError("Неизвестный движок распознавания", 400, "bad_asr_engine")
+    return engine
+
+
+def _parse_visibility(raw: str | None) -> str:
+    value = (raw or "private").strip().lower()
+    if value not in {"private", "public"}:
+        raise ApiError("Некорректная видимость видео", 400, "bad_visibility")
+    return value
+
+
+def _parse_group(raw: str | None):
+    if not raw:
+        return None
+    try:
+        return __import__("uuid").UUID(str(raw))
+    except ValueError:
+        raise ApiError("Некорректная группа", 400, "bad_group_id")
 
 
 def _enqueue(lecture: Lecture) -> int:
@@ -110,6 +134,16 @@ def create_lecture():
 
     store = storage()
     key = store.new_key()
+    free_gb = free_disk_gb(store.media_root)
+    upload_gb = (request.content_length or 0) / (1024**3)
+    required_gb = Config.MIN_FREE_DISK_GB + upload_gb
+    if free_gb is not None and free_gb < required_gb:
+        raise ApiError(
+            f"Недостаточно места для загрузки: свободно {free_gb:.1f} ГБ, "
+            f"нужно не менее {required_gb:.1f} ГБ.",
+            507,
+            "insufficient_storage",
+        )
     raw_title = (request.form.get("title") or "").strip()
     lecture = Lecture(
         user_id=g.user_id,
@@ -118,6 +152,10 @@ def create_lecture():
         title_auto=not raw_title,
         description=(request.form.get("description") or "").strip() or None,
         asr_profile=_parse_profile(request.form.get("asr_profile")),
+        asr_engine=_parse_engine(request.form.get("asr_engine")),
+        use_gpu=(request.form.get("use_gpu", "false").strip().lower() in {"1", "true", "yes", "on"}),
+        visibility=_parse_visibility(request.form.get("visibility")),
+        group_id=_parse_group(request.form.get("group_id")),
         source_type="upload",
         original_filename=uploaded.filename[:255],
         status="queued",
@@ -126,6 +164,8 @@ def create_lecture():
     )
     session = db.session()
     try:
+        if lecture.group_id and session.query(VideoGroup).filter(VideoGroup.id == lecture.group_id, VideoGroup.owner_id == g.user_id).first() is None:
+            raise ApiError("Группа не найдена", 404, "group_not_found")
         target, size = store.save_upload(
             uploaded, key, max_bytes=Config.MAX_UPLOAD_MB * 1024 * 1024
         )
@@ -157,6 +197,14 @@ def import_lecture():
 
     store = storage()
     key = store.new_key()
+    free_gb = free_disk_gb(store.media_root)
+    if free_gb is not None and free_gb < Config.MIN_FREE_DISK_GB:
+        raise ApiError(
+            f"Недостаточно места для импорта: свободно {free_gb:.1f} ГБ, "
+            f"нужно не менее {Config.MIN_FREE_DISK_GB:.1f} ГБ.",
+            507,
+            "insufficient_storage",
+        )
     session = db.session()
     try:
         raw_title = (data.get("title") or "").strip()
@@ -167,12 +215,18 @@ def import_lecture():
             title_auto=not raw_title,
             description=(data.get("description") or "").strip() or None,
             asr_profile=_parse_profile(data.get("asr_profile")),
+            asr_engine=_parse_engine(data.get("asr_engine")),
+            use_gpu=bool(data.get("use_gpu", False)),
+            visibility=_parse_visibility(data.get("visibility")),
+            group_id=_parse_group(data.get("group_id")),
             source_type="url",
             source_url=url,
             status="queued",
             stage="queued",
             progress=0.0,
         )
+        if lecture.group_id and session.query(VideoGroup).filter(VideoGroup.id == lecture.group_id, VideoGroup.owner_id == g.user_id).first() is None:
+            raise ApiError("Группа не найдена", 404, "group_not_found")
         session.add(lecture)
         session.commit()
         job_id = _enqueue(lecture)
@@ -227,6 +281,13 @@ def update_lecture(lecture_id: str):
             lecture.subject = (data.get("subject") or "").strip()[:100] or None
         if "topic" in data:
             lecture.topic = (data.get("topic") or "").strip()[:120] or None
+        if "visibility" in data:
+            lecture.visibility = _parse_visibility(data.get("visibility"))
+        if "group_id" in data:
+            group_id = _parse_group(data.get("group_id"))
+            if group_id and session.query(VideoGroup).filter(VideoGroup.id == group_id, VideoGroup.owner_id == g.user_id).first() is None:
+                raise ApiError("Группа не найдена", 404, "group_not_found")
+            lecture.group_id = group_id
         if lecture.topic and not lecture.subject:
             raise ApiError("Для темы нужно выбрать предмет", 400, "subject_required")
         session.commit()

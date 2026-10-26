@@ -10,6 +10,8 @@ import type {
   TranscriptResponse,
   UploadResult,
   User,
+  SystemInfo,
+  VideoGroup,
 } from "./types";
 
 export class ApiError extends Error {
@@ -49,11 +51,15 @@ export interface UploadPayload {
   title?: string;
   description?: string;
   asrProfile: "accurate" | "fast";
+  asrEngine: "vosk" | "whisper";
+  useGpu: boolean;
+  visibility: "private" | "public";
+  groupId?: string;
 }
 
 export const api = {
   me: () => request<{ user: User }>("/api/auth/me"),
-  register: (name: string, email: string, password: string) => request<{ user: User }>("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) }),
+  register: (name: string, email: string, password: string, role: "student" | "teacher") => request<{ user: User }>("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password, role }) }),
   login: (email: string, password: string) => request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   lectures: (params: { status?: string; q?: string; limit?: number } = {}) => {
@@ -110,14 +116,28 @@ export const api = {
       body: JSON.stringify({ asr_profile: asrProfile }),
     }),
 
-  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate") =>
+  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate", useGpu = false, asrEngine: "vosk" | "whisper" = "vosk", visibility: "private" | "public" = "private", groupId?: string) =>
     request<UploadResult>("/api/lectures/import", {
       method: "POST",
-      body: JSON.stringify({ url, title, asr_profile: asrProfile }),
+      body: JSON.stringify({ url, title, asr_profile: asrProfile, use_gpu: useGpu, asr_engine: asrEngine, visibility, group_id: groupId }),
     }),
 
   health: () => request<HealthResponse>("/api/health"),
+  systemInfo: () => request<SystemInfo>("/api/system/info"),
   stats: () => request<Stats>("/api/stats"),
+  groups: () => request<{ items: VideoGroup[] }>("/api/groups"),
+  createGroup: (name: string, visibility: "private" | "public") => request<VideoGroup>("/api/groups", { method: "POST", body: JSON.stringify({ name, visibility }) }),
+  shareLecture: (id: string) => request<{ token: string; path: string }>(`/api/lectures/${id}/share`, { method: "POST" }),
+  shareGroup: (id: string) => request<{ token: string; path: string }>(`/api/groups/${id}/share`, { method: "POST" }),
+  publicLectures: () => request<{ items: (LectureCard & { owner_name: string; group_name: string | null })[] }>("/api/public/lectures"),
+  publicLecture: (id: string) => request<LectureDetail>(`/api/public/lectures/${id}`),
+  sharedVideo: (token: string) => request<LectureDetail>(`/api/shared/videos/${token}`),
+  sharedGroup: (token: string) => request<{ group: VideoGroup; items: LectureCard[] }>(`/api/shared/groups/${token}`),
+  sharedGroupLecture: (token: string, id: string) => request<LectureDetail>(`/api/shared/groups/${token}/lectures/${id}`),
+  accessTranscript: (base: string) => request<TranscriptResponse>(`${base}/transcript`),
+  accessLecture: (base: string) => request<LectureDetail>(base),
+  accessSearch: (base: string, q: string, limit = 12) => request<SearchResponse>(`${base}/search?q=${encodeURIComponent(q)}&limit=${limit}`),
+  accessQa: (base: string, question: string) => request<QaResponse>(`${base}/qa`, { method: "POST", body: JSON.stringify({ question }) }),
 };
 
 /** Upload with real progress events (XHR is still the only way to get them). */
@@ -132,6 +152,10 @@ export function uploadLecture(
     if (payload.title) form.append("title", payload.title);
     if (payload.description) form.append("description", payload.description);
     form.append("asr_profile", payload.asrProfile);
+    form.append("asr_engine", payload.asrEngine);
+    form.append("use_gpu", String(payload.useGpu));
+    form.append("visibility", payload.visibility);
+    if (payload.groupId) form.append("group_id", payload.groupId);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/lectures");
