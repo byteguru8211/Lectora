@@ -22,6 +22,12 @@ TITLE_INDEX = (
 MIGRATIONS = (
     # 1.0.1: titles generated from the transcript
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS title_auto BOOLEAN NOT NULL DEFAULT FALSE",
+    # 1.1.0: optional hierarchy for the personal library
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS subject VARCHAR(100)",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS topic VARCHAR(120)",
+    # 1.2.0: personal accounts and lecture ownership
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE",
+    "ALTER TABLE search_logs ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES users(id) ON DELETE CASCADE",
 )
 
 

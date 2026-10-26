@@ -6,11 +6,12 @@ import "plyr/dist/plyr.css";
 import "./styles/base.css";
 import "./styles/layout.css";
 import "./styles/components.css";
+import { AuthProvider } from "./context/AuthContext";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      <AuthProvider><App /></AuthProvider>
     </BrowserRouter>
   </StrictMode>,
 );

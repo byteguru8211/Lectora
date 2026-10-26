@@ -1,11 +1,13 @@
 import { NavLink } from "react-router-dom";
 import { useUi } from "../context/UiContext";
 import { useTheme } from "../hooks/useTheme";
-import { LogoMark, MoonIcon, SearchIcon, SunIcon, UploadIcon } from "./icons";
+import { LogoMark, MoonIcon, SearchIcon, SunIcon, UploadIcon, UserIcon } from "./icons";
+import { useAuth } from "../context/AuthContext";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const ui = useUi();
   const { theme, toggle } = useTheme();
+  const auth = useAuth();
 
   return (
     <div className="page">
@@ -21,6 +23,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <nav className="nav">
             <NavLink to="/" end className={({ isActive }) => `nav__link ${isActive ? "is-active" : ""}`}>
               Библиотека
+            </NavLink>
+            <NavLink to="/account" className={({ isActive }) => `nav__link ${isActive ? "is-active" : ""}`}>
+              Мой кабинет
             </NavLink>
             <a
               className="nav__link"
@@ -53,6 +58,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="header__actions">
+            <NavLink to="/account" className="account-link" aria-label="Открыть личный кабинет" title={auth.user?.email}>
+              <span className="account-link__avatar"><UserIcon size={15} /></span>
+              <span className="account-link__name">{auth.user?.name}</span>
+            </NavLink>
             <button className="icon-btn" onClick={toggle} aria-label="Сменить тему" title="Светлая / тёмная тема">
               {theme === "dark" ? <SunIcon size={17} /> : <MoonIcon size={17} />}
             </button>
@@ -60,6 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <UploadIcon size={16} />
               Загрузить
             </button>
+            <button className="btn btn--ghost logout-btn" onClick={() => void auth.logout()}>Выйти</button>
           </div>
         </div>
       </header>

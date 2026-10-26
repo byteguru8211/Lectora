@@ -9,8 +9,12 @@ import { LibraryPage } from "./pages/LibraryPage";
 import { LecturePage } from "./pages/LecturePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { SearchPage } from "./pages/SearchPage";
+import { AccountPage } from "./pages/AccountPage";
+import { AuthPage } from "./pages/AuthPage";
+import { useAuth } from "./context/AuthContext";
 
 export default function App() {
+  const auth = useAuth();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [uploadMode, setUploadMode] = useState<"file" | "url">("file");
@@ -35,6 +39,9 @@ export default function App() {
 
   const ui = useMemo<UiActions>(() => ({ openUpload, openPalette }), [openUpload, openPalette]);
 
+  if (auth.loading) return <div className="app-loader"><span className="spinner" /></div>;
+  if (!auth.user) return <AuthPage />;
+
   return (
     <ToastProvider>
       <UiProvider value={ui}>
@@ -43,6 +50,7 @@ export default function App() {
             <Route path="/" element={<LibraryPage />} />
             <Route path="/lectures/:lectureId" element={<LecturePage />} />
             <Route path="/search" element={<SearchPage />} />
+            <Route path="/account" element={<AccountPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </AppShell>

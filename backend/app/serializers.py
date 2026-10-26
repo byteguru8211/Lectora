@@ -20,6 +20,8 @@ def lecture_card(lecture: Lecture) -> dict:
         "title": lecture.title,
         "title_auto": lecture.title_auto,
         "description": lecture.description,
+        "subject": lecture.subject,
+        "topic": lecture.topic,
         "status": lecture.status,
         "stage": lecture.stage,
         "stage_label": STAGE_LABELS.get(lecture.stage or "", lecture.stage),

@@ -83,6 +83,8 @@ class StudyNotes:
     llm_used: bool
     model: str | None = None
     title: str | None = None
+    category: str | None = None
+    subcategory: str | None = None
 
 
 class Summarizer:
@@ -174,6 +176,8 @@ class Summarizer:
 Составь учебный конспект. Верни JSON ровно такой структуры:
 {{
   "title": "название лекции (3-7 слов, без кавычек и точки)",
+  "category": "широкая область содержания (1-3 слова)",
+  "subcategory": "конкретная тема внутри области (1-5 слов)",
   "summary": "связный обзор лекции на 70-110 слов, 3-4 предложения",
   "sections": [
     {{
@@ -298,6 +302,13 @@ class Summarizer:
         if not (3 <= len(generated_title) <= 120):
             generated_title = None
 
+        category = normalize_space(str(data.get("category") or "")).strip(' "«»\'.')
+        subcategory = normalize_space(str(data.get("subcategory") or "")).strip(' "«»\'.')
+        if not (2 <= len(category) <= 100):
+            category = None
+        if not (2 <= len(subcategory) <= 120):
+            subcategory = None
+
         return StudyNotes(
             summary=summary,
             sections=sections,
@@ -305,6 +316,8 @@ class Summarizer:
             llm_used=True,
             model=Config.LLM_MODEL,
             title=generated_title,
+            category=category,
+            subcategory=subcategory,
         )
 
     # -- extractive fallback -------------------------------------------
@@ -389,6 +402,8 @@ class Summarizer:
             sections=sections,
             keywords=keyword_list,
             llm_used=False,
+            category=capitalize_first(keyword_list[0]) if keyword_list else "Другое",
+            subcategory=sections[0].title if sections else None,
         )
 
     # -- helpers --------------------------------------------------------

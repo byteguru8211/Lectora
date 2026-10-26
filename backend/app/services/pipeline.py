@@ -281,6 +281,8 @@ class Pipeline:
             lecture.summary = notes.summary
             lecture.keywords = notes.keywords
             lecture.llm_model = notes.model if notes.llm_used else None
+            lecture.subject = notes.category or "Другое"
+            lecture.topic = notes.subcategory or (notes.sections[0].title if notes.sections else None)
             if lecture.title_auto and notes.title:
                 generated = notes.title.strip()
                 if len(generated) >= 3 and generated.lower() != lecture.title.strip().lower():

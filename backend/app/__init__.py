@@ -9,12 +9,13 @@ import time
 import uuid
 from pathlib import Path
 
-from flask import Flask, g, jsonify, request, send_from_directory
+from flask import Flask, g, jsonify, request, send_from_directory, session
 
 from .api import lectures as lectures_api
 from .api import qa as qa_api
 from .api import search as search_api
 from .api import system as system_api
+from .api import auth as auth_api
 from .config import Config
 from .errors import register_error_handlers
 from .extensions import db
@@ -48,6 +49,7 @@ def create_app(config_object: type[Config] = Config, overrides: dict | None = No
         app.config.update(overrides)
     app.config["APP_VERSION"] = __version__
     app.config["JSON_AS_ASCII"] = False
+    app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
     app.json.ensure_ascii = False
 
     db.init_app(app)
@@ -78,6 +80,7 @@ def create_app(config_object: type[Config] = Config, overrides: dict | None = No
     app.register_blueprint(search_api.bp)
     app.register_blueprint(qa_api.bp)
     app.register_blueprint(system_api.bp)
+    app.register_blueprint(auth_api.bp)
 
     if app.config.get("WARMUP", True):
         threading.Thread(target=_warm_up, name="lectora-warmup", daemon=True).start()
@@ -111,6 +114,15 @@ def _register_middleware(app: Flask) -> None:
     def _start_timer():
         g.request_started = time.perf_counter()
         g.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
+        raw_user_id = session.get("user_id")
+        try:
+            g.user_id = uuid.UUID(raw_user_id) if raw_user_id else None
+        except (ValueError, TypeError):
+            session.clear()
+            g.user_id = None
+        public_api = request.path in {"/api/health", "/api/system/info"} or request.path.startswith("/api/auth/")
+        if request.path.startswith("/api/") and not public_api and g.user_id is None:
+            return jsonify({"error": {"code": "authentication_required", "message": "Требуется вход"}}), 401
 
     @app.after_request
     def _finalise(response):

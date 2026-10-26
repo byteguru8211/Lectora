@@ -50,6 +50,7 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "lectora-dev-secret-change-me")
     ENV = os.getenv("FLASK_ENV", "production")
     DEBUG = _bool("FLASK_DEBUG", False)
+    SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", False)
     HOST = os.getenv("HOST", "127.0.0.1")
     PORT = _int("PORT", 8000)
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import current_app
+from flask import current_app, g
 
 from ..errors import ApiError
 
@@ -29,7 +29,7 @@ def get_lecture_or_404(session, raw_id: str):
     except (ValueError, AttributeError, TypeError):
         raise ApiError("Некорректный идентификатор лекции", 400, "bad_lecture_id")
     lecture = session.get(Lecture, lecture_id)
-    if lecture is None:
+    if lecture is None or lecture.user_id != getattr(g, "user_id", None):
         raise ApiError("Лекция не найдена", 404, "lecture_not_found")
     return lecture
 

@@ -1,10 +1,19 @@
 export type LectureStatus = "queued" | "processing" | "ready" | "failed";
 
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string | null;
+}
+
 export interface LectureCard {
   id: string;
   title: string;
   title_auto: boolean;
   description: string | null;
+  subject: string | null;
+  topic: string | null;
   status: LectureStatus;
   stage: string | null;
   stage_label: string | null;

@@ -185,6 +185,19 @@ export const StarIcon = (p: IconProps) => (  <svg {...base(p)}>
   </svg>
 );
 
+export const UserIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20a7 7 0 0 1 14 0" />
+  </svg>
+);
+
+export const FolderIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h4l2 2h6A2.5 2.5 0 0 1 20.5 9.5v7A2.5 2.5 0 0 1 18 19H6a2.5 2.5 0 0 1-2.5-2.5v-9Z" />
+  </svg>
+);
+
 export const LogoMark = () => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
     <rect x="3" y="4" width="14" height="16" rx="3" stroke="white" strokeWidth="1.7" opacity="0.85" />

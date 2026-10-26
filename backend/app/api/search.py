@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import time
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from sqlalchemy import func, update
 
 from ..config import Config
@@ -40,7 +40,7 @@ def search():
     try:
         if lecture_id is not None:
             lecture = session.get(Lecture, lecture_id)
-            if lecture is None:
+            if lecture is None or lecture.user_id != g.user_id:
                 raise ApiError("Лекция не найдена", 404, "lecture_not_found")
             if lecture.status != "ready":
                 raise ApiError(
@@ -49,10 +49,11 @@ def search():
                     "lecture_not_ready",
                 )
 
+        owned_ids = [row[0] for row in session.query(Lecture.id).filter(Lecture.user_id == g.user_id, Lecture.status == "ready").all()]
         outcome = search_service.search(
             session,
             query,
-            lecture_ids=[lecture_id] if lecture_id else None,
+            lecture_ids=[lecture_id] if lecture_id else owned_ids,
             limit=limit,
             use_rerank=use_rerank,
         )
@@ -60,6 +61,7 @@ def search():
         # analytics + popularity counters
         session.add(
             SearchLog(
+                user_id=g.user_id,
                 query=query[:500],
                 scope="lecture" if lecture_id else "course",
                 lecture_id=lecture_id,
@@ -101,20 +103,20 @@ def suggest():
         pattern = f"%{query}%"
         titles = (
             session.query(Lecture.title)
-            .filter(Lecture.title.ilike(pattern))
+            .filter(Lecture.user_id == g.user_id, Lecture.title.ilike(pattern))
             .limit(5)
             .all()
         )
         sections = (
             session.query(Section.title, Lecture.title, Section.start_sec, Lecture.id)
             .join(Lecture, Lecture.id == Section.lecture_id)
-            .filter(Section.title.ilike(pattern))
+            .filter(Lecture.user_id == g.user_id, Section.title.ilike(pattern))
             .limit(5)
             .all()
         )
         history = (
             session.query(SearchLog.query, func.max(SearchLog.created_at).label("last"))
-            .filter(SearchLog.query.ilike(pattern))
+            .filter(SearchLog.user_id == g.user_id, SearchLog.query.ilike(pattern))
             .group_by(SearchLog.query)
             .order_by(func.max(SearchLog.created_at).desc())
             .limit(5)

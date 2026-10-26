@@ -35,15 +35,28 @@ class Base(DeclarativeBase):
     pass
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Lecture(Base):
     __tablename__ = "lectures"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     title_auto: Mapped[bool] = mapped_column(Boolean, default=False)
     description: Mapped[str | None] = mapped_column(Text)
+    subject: Mapped[str | None] = mapped_column(String(100), index=True)
+    topic: Mapped[str | None] = mapped_column(String(120), index=True)
 
     source_type: Mapped[str] = mapped_column(String(16), default="upload")
     source_url: Mapped[str | None] = mapped_column(Text)
@@ -236,6 +249,7 @@ class SearchLog(Base):
     __tablename__ = "search_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True)
     query: Mapped[str] = mapped_column(String(500), nullable=False)
     scope: Mapped[str] = mapped_column(String(16), default="course")
     lecture_id: Mapped[uuid.UUID | None] = mapped_column(

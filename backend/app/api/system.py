@@ -6,7 +6,7 @@ import logging
 import time
 from pathlib import Path
 
-from flask import Blueprint, current_app, jsonify
+from flask import Blueprint, current_app, g, jsonify
 from sqlalchemy import func, text
 
 from ..config import Config
@@ -108,43 +108,45 @@ def info():
 def stats():
     session = db.session()
     try:
-        total = session.query(func.count(Lecture.id)).scalar() or 0
+        owned = Lecture.user_id == g.user_id
+        total = session.query(func.count(Lecture.id)).filter(owned).scalar() or 0
         ready = (
-            session.query(func.count(Lecture.id)).filter(Lecture.status == "ready").scalar() or 0
+            session.query(func.count(Lecture.id)).filter(owned, Lecture.status == "ready").scalar() or 0
         )
         processing = (
             session.query(func.count(Lecture.id))
-            .filter(Lecture.status.in_(("queued", "processing")))
+            .filter(owned, Lecture.status.in_(("queued", "processing")))
             .scalar()
             or 0
         )
         failed = (
-            session.query(func.count(Lecture.id)).filter(Lecture.status == "failed").scalar() or 0
+            session.query(func.count(Lecture.id)).filter(owned, Lecture.status == "failed").scalar() or 0
         )
-        duration = session.query(func.coalesce(func.sum(Lecture.duration_sec), 0)).scalar() or 0
-        words = session.query(func.coalesce(func.sum(Lecture.word_count), 0)).scalar() or 0
-        chunks = session.query(func.count(Chunk.id)).scalar() or 0
-        segments = session.query(func.count(TranscriptSegment.id)).scalar() or 0
-        searches = session.query(func.count(SearchLog.id)).scalar() or 0
+        duration = session.query(func.coalesce(func.sum(Lecture.duration_sec), 0)).filter(owned).scalar() or 0
+        words = session.query(func.coalesce(func.sum(Lecture.word_count), 0)).filter(owned).scalar() or 0
+        chunks = session.query(func.count(Chunk.id)).join(Lecture, Lecture.id == Chunk.lecture_id).filter(owned).scalar() or 0
+        segments = session.query(func.count(TranscriptSegment.id)).join(Lecture, Lecture.id == TranscriptSegment.lecture_id).filter(owned).scalar() or 0
+        searches = session.query(func.count(SearchLog.id)).filter(SearchLog.user_id == g.user_id).scalar() or 0
         searches_today = (
             session.query(func.count(SearchLog.id))
-            .filter(SearchLog.created_at >= func.now() - text("interval '24 hours'"))
+            .filter(SearchLog.user_id == g.user_id, SearchLog.created_at >= func.now() - text("interval '24 hours'"))
             .scalar()
             or 0
         )
         pending_jobs = (
-            session.query(func.count(Job.id)).filter(Job.status.in_(("queued", "running"))).scalar()
+            session.query(func.count(Job.id)).join(Lecture, Lecture.id == Job.lecture_id).filter(owned, Job.status.in_(("queued", "running"))).scalar()
             or 0
         )
         top = (
             session.query(Lecture.id, Lecture.title, Lecture.view_count, Lecture.duration_sec)
-            .filter(Lecture.status == "ready")
+            .filter(owned, Lecture.status == "ready")
             .order_by(Lecture.view_count.desc())
             .limit(4)
             .all()
         )
         recent_queries = (
             session.query(SearchLog.query, func.max(SearchLog.created_at))
+            .filter(SearchLog.user_id == g.user_id)
             .group_by(SearchLog.query)
             .order_by(func.max(SearchLog.created_at).desc())
             .limit(6)

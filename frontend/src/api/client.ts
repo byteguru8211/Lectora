@@ -9,6 +9,7 @@ import type {
   Stats,
   TranscriptResponse,
   UploadResult,
+  User,
 } from "./types";
 
 export class ApiError extends Error {
@@ -51,6 +52,10 @@ export interface UploadPayload {
 }
 
 export const api = {
+  me: () => request<{ user: User }>("/api/auth/me"),
+  register: (name: string, email: string, password: string) => request<{ user: User }>("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) }),
+  login: (email: string, password: string) => request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
   lectures: (params: { status?: string; q?: string; limit?: number } = {}) => {
     const query = new URLSearchParams();
     if (params.status) query.set("status", params.status);
@@ -90,7 +95,7 @@ export const api = {
       body: JSON.stringify({ question }),
     }),
 
-  updateLecture: (id: string, patch: { title?: string; description?: string }) =>
+  updateLecture: (id: string, patch: { title?: string; description?: string; subject?: string | null; topic?: string | null }) =>
     request<LectureCard>(`/api/lectures/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),

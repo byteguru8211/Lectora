@@ -8,7 +8,7 @@ import mimetypes
 import time
 from pathlib import Path
 
-from flask import Blueprint, Response, jsonify, request, send_file, stream_with_context
+from flask import Blueprint, Response, g, jsonify, request, send_file, stream_with_context
 from sqlalchemy import func, update
 
 from ..config import Config
@@ -62,7 +62,7 @@ def _enqueue(lecture: Lecture) -> int:
 def list_lectures():
     session = db.session()
     try:
-        query = session.query(Lecture)
+        query = session.query(Lecture).filter(Lecture.user_id == g.user_id)
         status_filter = (request.args.get("status") or "").strip().lower()
         if status_filter and status_filter != "all":
             if status_filter == "processing":
@@ -81,6 +81,18 @@ def list_lectures():
         rows = (
             query.order_by(Lecture.created_at.desc()).offset(offset).limit(limit).all()
         )
+        # Older installations have no classification yet. Give ready videos a
+        # deterministic, content-derived fallback without making the request
+        # depend on the optional LLM server.
+        changed = False
+        for row in rows:
+            if row.status == "ready" and not row.subject:
+                row.subject = str((row.keywords or ["Другое"])[0]).strip().capitalize() or "Другое"
+                first_section = session.query(Section.title).filter(Section.lecture_id == row.id).order_by(Section.idx).first()
+                row.topic = first_section[0] if first_section else (row.title[:120] or None)
+                changed = True
+        if changed:
+            session.commit()
         return jsonify(
             {"items": [lecture_card(row) for row in rows], "total": total}
         )
@@ -100,6 +112,7 @@ def create_lecture():
     key = store.new_key()
     raw_title = (request.form.get("title") or "").strip()
     lecture = Lecture(
+        user_id=g.user_id,
         storage_key=key,
         title=_clean_title(raw_title, Path(uploaded.filename).stem),
         title_auto=not raw_title,
@@ -148,6 +161,7 @@ def import_lecture():
     try:
         raw_title = (data.get("title") or "").strip()
         lecture = Lecture(
+            user_id=g.user_id,
             storage_key=key,
             title=_clean_title(raw_title, "Импорт по ссылке"),
             title_auto=not raw_title,
@@ -209,6 +223,12 @@ def update_lecture(lecture_id: str):
             lecture.title_auto = False
         if "description" in data:
             lecture.description = (data.get("description") or "").strip() or None
+        if "subject" in data:
+            lecture.subject = (data.get("subject") or "").strip()[:100] or None
+        if "topic" in data:
+            lecture.topic = (data.get("topic") or "").strip()[:120] or None
+        if lecture.topic and not lecture.subject:
+            raise ApiError("Для темы нужно выбрать предмет", 400, "subject_required")
         session.commit()
         return jsonify(lecture_card(lecture))
     finally:
