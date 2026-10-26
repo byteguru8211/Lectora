@@ -1,0 +1,461 @@
+"""Lecture upload, status, transcript, outline, media and progress stream."""
+
+from __future__ import annotations
+
+import json
+import logging
+import mimetypes
+import time
+import uuid
+from pathlib import Path
+
+from flask import Blueprint, Response, current_app, jsonify, request, send_file, stream_with_context
+from sqlalchemy import func, select, update
+from sqlalchemy.orm import selectinload
+
+from ..config import Config
+from ..errors import ApiError
+from ..extensions import db
+from ..models import Job, Lecture, Section, TranscriptSegment, utcnow
+from ..serializers import job_dict, lecture_card, lecture_detail, segment_dict
+from ..services.pipeline import STAGE_LABELS
+from ..services.search import search_service
+from ..services.asr import AsrService
+from . import get_lecture_or_404, job_runner, storage
+
+bp = Blueprint("lectures", __name__, url_prefix="/api/lectures")
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------- helpers
+def _clean_title(raw: str | None, fallback: str) -> str:
+    title = (raw or "").strip()
+    if not title:
+        title = fallback
+    if len(title) > 300:
+        title = title[:297] + "…"
+    return title or "Без названия"
+
+
+def _parse_profile(raw: str | None) -> str:
+    profile = (raw or Config.ASR_DEFAULT_PROFILE).strip().lower()
+    available = AsrService().available_profiles()
+    if profile not in available:
+        profile = "accurate" if available.get("accurate") else "fast"
+    if not available.get(profile):
+        raise ApiError(
+            "Модели распознавания речи не найдены в models/vosk.",
+            503,
+            "asr_model_missing",
+            {"available": available},
+        )
+    return profile
+
+
+def _enqueue(lecture: Lecture) -> int:
+    runner = job_runner()
+    if runner is None:
+        raise ApiError("Фоновая обработка не запущена", 503, "worker_disabled")
+    return runner.enqueue(lecture.id)
+
+
+# ---------------------------------------------------------------- collection
+@bp.get("")
+def list_lectures():
+    session = db.session()
+    try:
+        query = session.query(Lecture)
+        status_filter = (request.args.get("status") or "").strip().lower()
+        if status_filter and status_filter != "all":
+            if status_filter == "processing":
+                query = query.filter(Lecture.status.in_(("queued", "processing")))
+            else:
+                query = query.filter(Lecture.status == status_filter)
+        search = (request.args.get("q") or "").strip()
+        if search:
+            pattern = f"%{search}%"
+            query = query.filter(
+                (Lecture.title.ilike(pattern)) | (Lecture.description.ilike(pattern))
+            )
+        total = query.count()
+        limit = min(max(int(request.args.get("limit", 60)), 1), 200)
+        offset = max(int(request.args.get("offset", 0)), 0)
+        rows = (
+            query.order_by(Lecture.created_at.desc()).offset(offset).limit(limit).all()
+        )
+        return jsonify(
+            {"items": [lecture_card(row) for row in rows], "total": total}
+        )
+    finally:
+        session.close()
+
+
+@bp.post("")
+def create_lecture():
+    if "file" not in request.files:
+        raise ApiError("Прикрепите видеофайл", 400, "file_required")
+    uploaded = request.files["file"]
+    if not uploaded or not uploaded.filename:
+        raise ApiError("Пустое имя файла", 400, "file_required")
+
+    store = storage()
+    key = store.new_key()
+    lecture = Lecture(
+        storage_key=key,
+        title=_clean_title(request.form.get("title"), Path(uploaded.filename).stem),
+        description=(request.form.get("description") or "").strip() or None,
+        asr_profile=_parse_profile(request.form.get("asr_profile")),
+        source_type="upload",
+        original_filename=uploaded.filename[:255],
+        status="queued",
+        stage="queued",
+        progress=0.0,
+    )
+    session = db.session()
+    try:
+        target, size = store.save_upload(
+            uploaded, key, max_bytes=Config.MAX_UPLOAD_MB * 1024 * 1024
+        )
+        lecture.video_path = store.relative(target)
+        lecture.mime_type = uploaded.mimetype or mimetypes.guess_type(target.name)[0]
+        session.add(lecture)
+        session.commit()
+        job_id = _enqueue(lecture)
+        log.info("uploaded lecture %s (%s, %.1f MB)", lecture.id, target.name, size / 1e6)
+        payload = lecture_card(lecture)
+        payload["job_id"] = job_id
+        return jsonify(payload), 202
+    except Exception:
+        session.rollback()
+        store.delete_lecture(key)
+        raise
+    finally:
+        session.close()
+
+
+@bp.post("/import")
+def import_lecture():
+    if not Config.ALLOW_URL_IMPORT:
+        raise ApiError("Импорт по ссылке отключён", 403, "import_disabled")
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()
+    if not url.startswith(("http://", "https://")):
+        raise ApiError("Укажите корректную ссылку на видео", 400, "bad_url")
+
+    store = storage()
+    key = store.new_key()
+    session = db.session()
+    try:
+        lecture = Lecture(
+            storage_key=key,
+            title=_clean_title(data.get("title"), "Импорт по ссылке"),
+            description=(data.get("description") or "").strip() or None,
+            asr_profile=_parse_profile(data.get("asr_profile")),
+            source_type="url",
+            source_url=url,
+            status="queued",
+            stage="queued",
+            progress=0.0,
+        )
+        session.add(lecture)
+        session.commit()
+        job_id = _enqueue(lecture)
+        payload = lecture_card(lecture)
+        payload["job_id"] = job_id
+        return jsonify(payload), 202
+    except Exception:
+        session.rollback()
+        store.delete_lecture(key)
+        raise
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------- single item
+@bp.get("/<lecture_id>")
+def get_lecture(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        sections = (
+            session.query(Section)
+            .filter(Section.lecture_id == lecture.id)
+            .order_by(Section.idx)
+            .all()
+        )
+        if lecture.status == "ready":
+            session.execute(
+                update(Lecture)
+                .where(Lecture.id == lecture.id)
+                .values(view_count=Lecture.view_count + 1)
+            )
+            session.commit()
+        return jsonify(lecture_detail(lecture, sections))
+    finally:
+        session.close()
+
+
+@bp.patch("/<lecture_id>")
+def update_lecture(lecture_id: str):
+    data = request.get_json(silent=True) or {}
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        if "title" in data:
+            title = _clean_title(data.get("title"), lecture.title)
+            lecture.title = title
+        if "description" in data:
+            lecture.description = (data.get("description") or "").strip() or None
+        session.commit()
+        return jsonify(lecture_card(lecture))
+    finally:
+        session.close()
+
+
+@bp.delete("/<lecture_id>")
+def delete_lecture(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        key = lecture.storage_key
+        session.delete(lecture)
+        session.commit()
+        storage().delete_lecture(key)
+        search_service.invalidate(lecture.id)
+        return ("", 204)
+    finally:
+        session.close()
+
+
+@bp.post("/<lecture_id>/reprocess")
+def reprocess(lecture_id: str):
+    data = request.get_json(silent=True) or {}
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        if lecture.status in ("queued", "processing"):
+            raise ApiError("Лекция уже обрабатывается", 409, "already_processing")
+        if data.get("asr_profile"):
+            lecture.asr_profile = _parse_profile(data["asr_profile"])
+        lecture.status = "queued"
+        lecture.stage = "queued"
+        lecture.progress = 0.0
+        lecture.error_message = None
+        session.commit()
+        job_id = _enqueue(lecture)
+        payload = lecture_card(lecture)
+        payload["job_id"] = job_id
+        return jsonify(payload), 202
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/transcript")
+def transcript(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        rows = (
+            session.query(TranscriptSegment)
+            .filter(TranscriptSegment.lecture_id == lecture.id)
+            .order_by(TranscriptSegment.idx)
+            .all()
+        )
+        return jsonify(
+            {
+                "lecture_id": str(lecture.id),
+                "duration_sec": round(lecture.duration_sec or 0.0, 2),
+                "language": lecture.language,
+                "segments": [segment_dict(row) for row in rows],
+            }
+        )
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/structure")
+def structure(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        sections = (
+            session.query(Section)
+            .filter(Section.lecture_id == lecture.id)
+            .order_by(Section.idx)
+            .all()
+        )
+        from ..serializers import section_dict
+
+        return jsonify(
+            {
+                "summary": lecture.summary,
+                "keywords": list(lecture.keywords or []),
+                "sections": [section_dict(row) for row in sections],
+                "llm_model": lecture.llm_model,
+            }
+        )
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/status")
+def status(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        job = (
+            session.query(Job)
+            .filter(Job.lecture_id == lecture.id)
+            .order_by(Job.id.desc())
+            .first()
+        )
+        return jsonify(
+            {
+                "id": str(lecture.id),
+                "status": lecture.status,
+                "stage": lecture.stage,
+                "stage_label": STAGE_LABELS.get(lecture.stage or "", lecture.stage),
+                "progress": round(lecture.progress or 0.0, 1),
+                "error_message": lecture.error_message,
+                "job": job_dict(job) if job else None,
+            }
+        )
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------- stream
+@bp.get("/<lecture_id>/events")
+def events(lecture_id: str):
+    """Server-sent events with processing progress (polling DB, change-only)."""
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        lecture_uuid = lecture.id
+    finally:
+        session.close()
+
+    def generator():
+        last_payload = None
+        deadline = time.time() + 3600
+        try:
+            while time.time() < deadline:
+                session = db.session()
+                try:
+                    current = session.get(Lecture, lecture_uuid)
+                    if current is None:
+                        yield "event: gone\ndata: {}\n\n"
+                        return
+                    payload = {
+                        "status": current.status,
+                        "stage": current.stage,
+                        "stage_label": STAGE_LABELS.get(current.stage or "", current.stage),
+                        "progress": round(current.progress or 0.0, 1),
+                        "error_message": current.error_message,
+                        "duration_sec": round(current.duration_sec or 0.0, 2),
+                    }
+                finally:
+                    session.close()
+                serialised = json.dumps(payload, ensure_ascii=False)
+                if serialised != last_payload:
+                    yield f"event: progress\ndata: {serialised}\n\n"
+                    last_payload = serialised
+                if payload["status"] in ("ready", "failed", "cancelled"):
+                    yield f"event: done\ndata: {serialised}\n\n"
+                    return
+                time.sleep(0.9)
+            yield "event: timeout\ndata: {}\n\n"
+        except GeneratorExit:  # pragma: no cover - client disconnect
+            return
+
+    response = Response(stream_with_context(generator()), mimetype="text/event-stream")
+    response.headers["Cache-Control"] = "no-cache, no-transform"
+    response.headers["X-Accel-Buffering"] = "no"
+    return response
+
+
+# ---------------------------------------------------------------- files
+@bp.get("/<lecture_id>/media")
+def media(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        path = storage().path_for(lecture.video_path)
+        if path is None or not path.is_file():
+            raise ApiError("Видеофайл недоступен", 404, "media_missing")
+        mimetype = lecture.mime_type or mimetypes.guess_type(path.name)[0] or "video/mp4"
+        response = send_file(
+            path,
+            mimetype=mimetype,
+            conditional=True,
+            etag=True,
+            max_age=3600,
+            last_modified=path.stat().st_mtime,
+        )
+        response.headers["Accept-Ranges"] = "bytes"
+        response.headers["Content-Disposition"] = "inline"
+        return response
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/thumbnail")
+def thumbnail(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        path = storage().path_for(lecture.thumbnail_path)
+        if path is None or not path.is_file():
+            raise ApiError("Превью недоступно", 404, "thumbnail_missing")
+        response = send_file(path, mimetype="image/jpeg", max_age=86400, conditional=True)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/subtitles.vtt")
+def subtitles(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        rows = (
+            session.query(TranscriptSegment)
+            .filter(TranscriptSegment.lecture_id == lecture.id)
+            .order_by(TranscriptSegment.idx)
+            .all()
+        )
+        from ..utils.timefmt import vtt_time
+
+        lines = ["WEBVTT", ""]
+        for row in rows:
+            text = row.text.replace("-->", "->")
+            lines.append(f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}")
+            lines.append(text)
+            lines.append("")
+        response = Response("\n".join(lines), mimetype="text/vtt")
+        response.headers["Cache-Control"] = "public, max-age=300"
+        return response
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------- queue info
+@bp.get("/queue/status")
+def queue_status():
+    session = db.session()
+    try:
+        pending = session.query(func.count(Job.id)).filter(
+            Job.status.in_(("queued", "running"))
+        ).scalar()
+        latest = (
+            session.query(Job).order_by(Job.id.desc()).limit(5).all()
+        )
+        return jsonify(
+            {
+                "pending": int(pending or 0),
+                "recent": [job_dict(job) for job in latest],
+            }
+        )
+    finally:
+        session.close()

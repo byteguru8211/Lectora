@@ -1,0 +1,32 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# --- local configuration --------------------------------------------------
+.env
+.env.local
+
+# --- large local assets (downloaded, not committed) -----------------------
+models/
+tools/
+data/
+storage/
+videos_examples/
+
+# --- frontend -------------------------------------------------------------
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# --- misc -----------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.log
+.dsh-office-*/
+.acl-reports/

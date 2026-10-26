@@ -1,0 +1,11 @@
+Flask>=3.1,<4
+SQLAlchemy>=2.0,<3
+psycopg[binary]>=3.2,<4
+waitress>=3.0,<4
+python-dotenv>=1.0,<2
+numpy>=2.0,<3
+vosk>=0.3.45,<0.4
+sentence-transformers>=3.0,<7
+torch>=2.2,<3
+requests>=2.31,<3
+huggingface_hub>=0.30,<2
