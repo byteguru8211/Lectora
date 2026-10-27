@@ -51,6 +51,9 @@ export interface LectureCard {
   asr_profile: "accurate" | "fast";
   asr_engine: "vosk" | "whisper";
   use_gpu: boolean;
+  language: "ru" | "en";
+  target_language: "ru" | "en" | null;
+  voiceover_enabled: boolean;
   segment_count: number;
   chunk_count: number;
   word_count: number;
@@ -95,6 +98,7 @@ export interface LectureDetail extends LectureCard {
   questions: string[];
   media_url: string;
   subtitles_url: string;
+  voiceover_url: string | null;
   updated_at: string | null;
 }
 
@@ -104,6 +108,7 @@ export interface Segment {
   end_sec: number;
   timestamp: string;
   text: string;
+  translated_text: string | null;
 }
 
 export interface TranscriptResponse {

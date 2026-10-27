@@ -74,6 +74,15 @@ def _parse_visibility(raw: str | None) -> str:
     return value
 
 
+def _parse_language(raw: str | None, *, optional: bool = False) -> str | None:
+    value = (raw or "").strip().lower()
+    if optional and value in {"", "none", "off"}:
+        return None
+    if value not in {"ru", "en"}:
+        raise ApiError("Поддерживаются русский и английский языки", 400, "bad_language")
+    return value
+
+
 def _parse_llm_mode(raw: str | None, default: str | None = None) -> str:
     """Validate the notes mode (``api`` | ``local``)."""
     try:
@@ -191,6 +200,9 @@ def create_lecture():
         asr_engine=_parse_engine(request.form.get("asr_engine")),
         use_gpu=(request.form.get("use_gpu", "false").strip().lower() in {"1", "true", "yes", "on"}),
         llm_mode=_parse_llm_mode(request.form.get("llm_mode")),
+        language=_parse_language(request.form.get("language") or "ru"),
+        target_language=_parse_language(request.form.get("target_language"), optional=True),
+        voiceover_enabled=(request.form.get("voiceover", "false").strip().lower() in {"1", "true", "yes", "on"}),
         visibility=_parse_visibility(request.form.get("visibility")),
         group_id=_parse_group(request.form.get("group_id")),
         source_type="upload",
@@ -201,6 +213,12 @@ def create_lecture():
     )
     session = db.session()
     try:
+        if lecture.language == "en":
+            lecture.asr_engine = "whisper"
+        if lecture.target_language and lecture.llm_mode != "api":
+            raise ApiError("Перевод видео доступен только через DeepSeek API", 400, "translation_requires_api")
+        if lecture.voiceover_enabled and not lecture.target_language:
+            raise ApiError("Для озвучки сначала выберите язык перевода", 400, "voiceover_requires_translation")
         if lecture.group_id and session.query(VideoGroup).filter(VideoGroup.id == lecture.group_id, VideoGroup.owner_id == g.user_id).first() is None:
             raise ApiError("Группа не найдена", 404, "group_not_found")
         target, size = store.save_upload(
@@ -255,6 +273,9 @@ def import_lecture():
             asr_engine=_parse_engine(data.get("asr_engine")),
             use_gpu=bool(data.get("use_gpu", False)),
             llm_mode=_parse_llm_mode(data.get("llm_mode")),
+            language=_parse_language(data.get("language") or "ru"),
+            target_language=_parse_language(data.get("target_language"), optional=True),
+            voiceover_enabled=bool(data.get("voiceover", False)),
             visibility=_parse_visibility(data.get("visibility")),
             group_id=_parse_group(data.get("group_id")),
             source_type="url",
@@ -263,6 +284,12 @@ def import_lecture():
             stage="queued",
             progress=0.0,
         )
+        if lecture.language == "en":
+            lecture.asr_engine = "whisper"
+        if lecture.target_language and lecture.llm_mode != "api":
+            raise ApiError("Перевод видео доступен только через DeepSeek API", 400, "translation_requires_api")
+        if lecture.voiceover_enabled and not lecture.target_language:
+            raise ApiError("Для озвучки сначала выберите язык перевода", 400, "voiceover_requires_translation")
         if lecture.group_id and session.query(VideoGroup).filter(VideoGroup.id == lecture.group_id, VideoGroup.owner_id == g.user_id).first() is None:
             raise ApiError("Группа не найдена", 404, "group_not_found")
         session.add(lecture)
@@ -363,6 +390,8 @@ def reprocess(lecture_id: str):
             lecture.asr_profile = _parse_profile(data["asr_profile"])
         if data.get("llm_mode"):
             lecture.llm_mode = _parse_llm_mode(data["llm_mode"])
+        if lecture.target_language and lecture.llm_mode != "api":
+            raise ApiError("Перевод видео доступен только через DeepSeek API", 400, "translation_requires_api")
         lecture.status = "queued"
         lecture.stage = "queued"
         lecture.progress = 0.0
@@ -596,14 +625,31 @@ def subtitles(lecture_id: str):
         from ..utils.timefmt import vtt_time
 
         lines = ["WEBVTT", ""]
+        requested = (request.args.get("lang") or lecture.language).lower()
+        if requested not in {lecture.language, lecture.target_language}:
+            raise ApiError("Субтитры на этом языке недоступны", 404, "subtitles_unavailable")
         for row in rows:
-            text = row.text.replace("-->", "->")
+            value = row.translated_text if requested == lecture.target_language else row.text
+            text = (value or row.text).replace("-->", "->")
             lines.append(f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}")
             lines.append(text)
             lines.append("")
         response = Response("\n".join(lines), mimetype="text/vtt")
         response.headers["Cache-Control"] = "public, max-age=300"
         return response
+    finally:
+        session.close()
+
+
+@bp.get("/<lecture_id>/voiceover")
+def voiceover(lecture_id: str):
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        path = storage().path_for(lecture.voiceover_path)
+        if path is None or not path.is_file():
+            raise ApiError("Озвучка недоступна", 404, "voiceover_missing")
+        return send_file(path, mimetype="audio/mpeg", conditional=True, etag=True, max_age=3600)
     finally:
         session.close()
 

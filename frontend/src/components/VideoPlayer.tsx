@@ -1,7 +1,7 @@
 import Plyr from "plyr";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Section } from "../api/types";
+import type { Section, Segment } from "../api/types";
 import { formatClock } from "../utils/format";
 import { ChevronDownIcon } from "./icons";
 
@@ -9,6 +9,10 @@ interface Props {
   src: string;
   poster?: string | null;
   subtitlesUrl?: string | null;
+  segments?: Segment[];
+  sourceLanguage?: "ru" | "en";
+  targetLanguage?: "ru" | "en" | null;
+  voiceoverUrl?: string | null;
   sections: Section[];
   currentTime: number;
   seekRequest: { sec: number; nonce: number } | null;
@@ -20,7 +24,10 @@ interface Props {
 export function VideoPlayer({
   src,
   poster,
-  subtitlesUrl,
+  segments = [],
+  sourceLanguage = "ru",
+  targetLanguage = null,
+  voiceoverUrl = null,
   sections,
   currentTime,
   seekRequest,
@@ -31,11 +38,20 @@ export function VideoPlayer({
   const holderRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const playerRef = useRef<Plyr | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const voiceRef = useRef(false);
+  const narrationRateRef = useRef(1);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const originalGainRef = useRef<GainNode | null>(null);
   const timeRef = useRef(onTime);
   const durationRef = useRef(onDuration);
   const [ready, setReady] = useState(false);
   const [chaptersOpen, setChaptersOpen] = useState(false);
   const [paused, setPaused] = useState(true);
+  const [subtitleMode, setSubtitleMode] = useState<"off" | "source" | "target" | "both">("source");
+  const [voiceover, setVoiceover] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
   // Plyr's own container goes fullscreen, so overlays must live inside it.
   const [overlayHost, setOverlayHost] = useState<HTMLElement | null>(null);
 
@@ -57,49 +73,52 @@ export function VideoPlayer({
         "duration",
         "mute",
         "volume",
-        "captions",
-        "settings",
         "pip",
         "fullscreen",
       ],
-      settings: ["captions", "speed"],
-      speed: { selected: 1, options: [0.75, 1, 1.25, 1.5, 1.75, 2] },
       keyboard: { focused: true, global: false },
       tooltips: { controls: true, seek: true },
-      captions: { active: true, update: true, language: "ru" },
       ratio: "16:9",
     });
     playerRef.current = player;
 
-    const handleTime = () => timeRef.current(player.currentTime);
-    const handlePlay = () => setPaused(false);
-    const handlePause = () => setPaused(true);
+    const syncNarration = (force = false) => {
+      const audio = audioRef.current;
+      if (!voiceRef.current || !audio) return;
+      const target = player.currentTime * narrationRateRef.current;
+      // Small drift is normal for two media elements. Correcting it every
+      // frame can seek the narration backwards and repeat words.
+      if (force || Math.abs(audio.currentTime - target) > 2.5) audio.currentTime = target;
+    };
+    const handleTime = () => { timeRef.current(player.currentTime); syncNarration(false); };
+    const handleSeek = () => { timeRef.current(player.currentTime); syncNarration(true); };
+    const handlePlay = () => { setPaused(false); if (voiceRef.current) void audioRef.current?.play().catch(() => undefined); };
+    const handlePause = () => { setPaused(true); audioRef.current?.pause(); };
+    const handleVolume = () => {
+      if (audioRef.current) audioRef.current.volume = player.muted ? 0 : player.volume;
+    };
     const handleLoaded = () => {
       durationRef.current(player.duration || 0);
       setReady(true);
       setOverlayHost(player.elements.container as HTMLElement);
-      try {
-        const captions = (player as unknown as { captions?: { active: boolean } }).captions;
-        if (captions) captions.active = true;
-      } catch {
-        /* captions may not be ready yet */
-      }
     };
 
     player.on("timeupdate", handleTime);
     player.on("loadedmetadata", handleLoaded);
-    player.on("seeked", handleTime);
+    player.on("seeked", handleSeek);
     player.on("play", handlePlay);
     player.on("pause", handlePause);
     player.on("ended", handlePause);
+    player.on("volumechange", handleVolume);
 
     return () => {
       player.off("timeupdate", handleTime);
       player.off("loadedmetadata", handleLoaded);
-      player.off("seeked", handleTime);
+      player.off("seeked", handleSeek);
       player.off("play", handlePlay);
       player.off("pause", handlePause);
       player.off("ended", handlePause);
+      player.off("volumechange", handleVolume);
       player.destroy();
       playerRef.current = null;
       setOverlayHost(null);
@@ -107,12 +126,32 @@ export function VideoPlayer({
     };
   }, [src]);
 
+  useEffect(() => () => {
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    originalGainRef.current = null;
+  }, []);
+
   useEffect(() => {
     const player = playerRef.current;
     if (!player || !seekRequest) return;
     player.currentTime = seekRequest.sec;
     void Promise.resolve(player.play()).catch(() => undefined);
   }, [seekRequest]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !voiceoverUrl) return;
+    const fitNarration = () => {
+      const videoDuration = playerRef.current?.duration || 0;
+      if (videoDuration > 0 && audio.duration > 0) {
+        narrationRateRef.current = Math.max(0.5, Math.min(2, audio.duration / videoDuration));
+        audio.playbackRate = Math.max(0.5, Math.min(2, narrationRateRef.current * playbackSpeed));
+      }
+    };
+    audio.addEventListener("loadedmetadata", fitNarration);
+    return () => audio.removeEventListener("loadedmetadata", fitNarration);
+  }, [voiceoverUrl, playbackSpeed]);
 
   // Chapter separators on Plyr's progress bar (YouTube-like ticks).
   useEffect(() => {
@@ -139,6 +178,41 @@ export function VideoPlayer({
     sections.find(
       (section) => currentTime >= section.start_sec && currentTime < section.end_sec,
     ) ?? sections[0];
+  const activeSegment = segments.find((segment) => currentTime >= segment.start_sec && currentTime < segment.end_sec);
+  const sourceLabel = sourceLanguage === "ru" ? "RU" : "EN";
+  const targetLabel = targetLanguage === "ru" ? "RU" : "EN";
+
+  const toggleVoiceover = () => {
+    const next = !voiceover;
+    setVoiceover(next);
+    voiceRef.current = next;
+    const player = playerRef.current;
+    const audio = audioRef.current;
+    if (!player || !audio) return;
+    if (!audioContextRef.current && videoRef.current) {
+      const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (AudioContextClass) {
+        const context = new AudioContextClass();
+        const source = context.createMediaElementSource(videoRef.current);
+        const gain = context.createGain();
+        source.connect(gain).connect(context.destination);
+        audioContextRef.current = context;
+        originalGainRef.current = gain;
+      }
+    }
+    if (audioContextRef.current?.state === "suspended") void audioContextRef.current.resume();
+    if (originalGainRef.current) originalGainRef.current.gain.value = next ? 0 : 1;
+    audio.volume = player.muted ? 0 : player.volume;
+    audio.currentTime = player.currentTime * narrationRateRef.current;
+    if (next && !player.paused) void audio.play().catch(() => undefined);
+    else audio.pause();
+  };
+
+  const changeSpeed = (speed: number) => {
+    setPlaybackSpeed(speed);
+    if (playerRef.current) playerRef.current.speed = speed;
+    if (audioRef.current) audioRef.current.playbackRate = Math.max(0.5, Math.min(2, narrationRateRef.current * speed));
+  };
 
   const overlay = (
     <>
@@ -149,6 +223,30 @@ export function VideoPlayer({
         {paused && <span className="player-timecode__dot" />}
         {formatClock(currentTime)}
       </div>
+
+      <div className={`player-settings ${settingsOpen ? "is-open" : ""}`}>
+        <button className="player-settings__toggle" type="button" onClick={() => setSettingsOpen((open) => !open)} aria-expanded={settingsOpen} title="Настройки плеера">
+          <span>⚙</span> Настройки
+        </button>
+        {settingsOpen && <div className="player-settings__menu">
+          <div className="player-settings__section">
+            <span className="player-settings__label">Субтитры</span>
+            <div className="player-settings__options">
+              <button className={subtitleMode === "off" ? "is-active" : ""} onClick={() => setSubtitleMode("off")}>Выкл.</button>
+              <button className={subtitleMode === "source" ? "is-active" : ""} onClick={() => setSubtitleMode("source")}>{sourceLabel}</button>
+              {targetLanguage && <button className={subtitleMode === "target" ? "is-active" : ""} onClick={() => setSubtitleMode("target")}>{targetLabel}</button>}
+              {targetLanguage && <button className={subtitleMode === "both" ? "is-active" : ""} onClick={() => setSubtitleMode("both")}>Два языка</button>}
+            </div>
+          </div>
+          <label className="player-settings__row"><span>Скорость</span><select value={playbackSpeed} onChange={(event) => changeSpeed(Number(event.target.value))}>{[0.75, 1, 1.25, 1.5, 1.75, 2].map((speed) => <option key={speed} value={speed}>{speed}×</option>)}</select></label>
+          {voiceoverUrl && <div className="player-settings__row"><span>Аудио</span><button className={voiceover ? "is-active" : ""} onClick={toggleVoiceover}>{voiceover ? `Озвучка ${targetLabel}` : "Оригинал"}</button></div>}
+        </div>}
+      </div>
+
+      {activeSegment && subtitleMode !== "off" && <div className="bilingual-subtitles">
+        {(subtitleMode === "source" || subtitleMode === "both") && <span>{activeSegment.text}</span>}
+        {(subtitleMode === "target" || subtitleMode === "both") && activeSegment.translated_text && <span className="is-translation">{activeSegment.translated_text}</span>}
+      </div>}
 
       {sections.length > 0 && (
         <div className={`player-chapters ${chaptersOpen ? "is-open" : ""}`}>
@@ -195,10 +293,8 @@ export function VideoPlayer({
       <div className="player-card__holder" ref={holderRef}>
         <video ref={videoRef} playsInline controls poster={poster ?? undefined} preload="metadata">
           <source src={src} />
-          {subtitlesUrl && (
-            <track kind="captions" label="Русский" srcLang="ru" src={subtitlesUrl} default />
-          )}
         </video>
+        {voiceoverUrl && <audio ref={audioRef} src={voiceoverUrl} preload="metadata" />}
         {overlayHost ? createPortal(overlay, overlayHost) : overlay}
       </div>
     </div>

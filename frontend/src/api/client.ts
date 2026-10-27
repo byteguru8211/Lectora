@@ -58,6 +58,9 @@ export interface UploadPayload {
   visibility: "private" | "public";
   groupId?: string;
   llmMode: LlmMode;
+  language: "ru" | "en";
+  targetLanguage?: "ru" | "en";
+  voiceover: boolean;
 }
 
 export const api = {
@@ -104,7 +107,7 @@ export const api = {
       body: JSON.stringify({ question }),
     }),
 
-  updateLecture: (id: string, patch: { title?: string; description?: string; subject?: string | null; topic?: string | null }) =>
+  updateLecture: (id: string, patch: { title?: string; description?: string; subject?: string | null; topic?: string | null; visibility?: "private" | "public"; group_id?: string | null }) =>
     request<LectureCard>(`/api/lectures/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
@@ -126,10 +129,10 @@ export const api = {
       body: JSON.stringify({ llm_mode: llmMode }),
     }),
 
-  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate", useGpu = false, asrEngine: "vosk" | "whisper" = "vosk", visibility: "private" | "public" = "private", groupId?: string, llmMode: LlmMode = "api") =>
+  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate", useGpu = false, asrEngine: "vosk" | "whisper" = "vosk", visibility: "private" | "public" = "private", groupId?: string, llmMode: LlmMode = "api", language: "ru" | "en" = "ru", targetLanguage?: "ru" | "en", voiceover = false) =>
     request<UploadResult>("/api/lectures/import", {
       method: "POST",
-      body: JSON.stringify({ url, title, asr_profile: asrProfile, use_gpu: useGpu, asr_engine: asrEngine, visibility, group_id: groupId, llm_mode: llmMode }),
+      body: JSON.stringify({ url, title, asr_profile: asrProfile, use_gpu: useGpu, asr_engine: asrEngine, visibility, group_id: groupId, llm_mode: llmMode, language, target_language: targetLanguage, voiceover }),
     }),
 
   health: () => request<HealthResponse>("/api/health"),
@@ -137,6 +140,7 @@ export const api = {
   stats: () => request<Stats>("/api/stats"),
   groups: () => request<{ items: VideoGroup[] }>("/api/groups"),
   createGroup: (name: string, visibility: "private" | "public") => request<VideoGroup>("/api/groups", { method: "POST", body: JSON.stringify({ name, visibility }) }),
+  updateGroup: (id: string, patch: { name?: string; visibility?: "private" | "public" }) => request<VideoGroup>(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   shareLecture: (id: string) => request<{ token: string; path: string }>(`/api/lectures/${id}/share`, { method: "POST" }),
   shareGroup: (id: string) => request<{ token: string; path: string }>(`/api/groups/${id}/share`, { method: "POST" }),
   publicLectures: () => request<{ items: (LectureCard & { owner_name: string; group_name: string | null })[] }>("/api/public/lectures"),
@@ -170,6 +174,9 @@ export function uploadLecture(
     form.append("visibility", payload.visibility);
     if (payload.groupId) form.append("group_id", payload.groupId);
     form.append("llm_mode", payload.llmMode);
+    form.append("language", payload.language);
+    if (payload.targetLanguage) form.append("target_language", payload.targetLanguage);
+    form.append("voiceover", String(payload.voiceover));
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/lectures");

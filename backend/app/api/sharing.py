@@ -155,6 +155,7 @@ def _detail(session, lecture: Lecture, media_url: str) -> dict:
     data["media_url"] = media_url
     data["thumbnail_url"] = f"{media_url.rsplit('/media', 1)[0]}/thumbnail" if lecture.thumbnail_path else None
     data["subtitles_url"] = f"{media_url.rsplit('/media', 1)[0]}/subtitles.vtt"
+    data["voiceover_url"] = f"{media_url.rsplit('/media', 1)[0]}/voiceover" if lecture.voiceover_path else None
     return data
 
 
@@ -202,9 +203,20 @@ def _subtitles(session, lecture: Lecture):
     from ..utils.timefmt import vtt_time
     rows = session.query(TranscriptSegment).filter(TranscriptSegment.lecture_id == lecture.id).order_by(TranscriptSegment.idx).all()
     lines = ["WEBVTT", ""]
+    requested = (request.args.get("lang") or lecture.language).lower()
+    if requested not in {lecture.language, lecture.target_language}:
+        raise ApiError("Субтитры на этом языке недоступны", 404, "subtitles_unavailable")
     for row in rows:
-        lines.extend([f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}", row.text.replace("-->", "->"), ""])
+        value = row.translated_text if requested == lecture.target_language else row.text
+        lines.extend([f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}", (value or row.text).replace("-->", "->"), ""])
     return Response("\n".join(lines), mimetype="text/vtt", headers={"Cache-Control": "public, max-age=300"})
+
+
+def _voiceover(lecture: Lecture):
+    path = storage().path_for(lecture.voiceover_path)
+    if path is None or not path.is_file():
+        raise ApiError("Озвучка недоступна", 404, "voiceover_missing")
+    return send_file(path, mimetype="audio/mpeg", conditional=True, etag=True, max_age=3600)
 
 
 def _send_media(lecture: Lecture, thumbnail: bool = False):
@@ -266,6 +278,13 @@ def public_subtitles(lecture_id: str):
     finally: session.close()
 
 
+@bp.get("/public/lectures/<lecture_id>/voiceover")
+def public_voiceover(lecture_id: str):
+    session = db.session()
+    try: return _voiceover(_public_lecture(session, lecture_id))
+    finally: session.close()
+
+
 @bp.get("/shared/videos/<token>")
 def shared_video(token: str):
     session = db.session()
@@ -312,6 +331,13 @@ def shared_video_qa(token: str):
 def shared_video_subtitles(token: str):
     session = db.session()
     try: return _subtitles(session, _shared_lecture(session, token))
+    finally: session.close()
+
+
+@bp.get("/shared/videos/<token>/voiceover")
+def shared_video_voiceover(token: str):
+    session = db.session()
+    try: return _voiceover(_shared_lecture(session, token))
     finally: session.close()
 
 
@@ -376,4 +402,11 @@ def shared_group_qa(token: str, lecture_id: str):
 def shared_group_subtitles(token: str, lecture_id: str):
     session = db.session()
     try: return _subtitles(session, _group_lecture(session, token, lecture_id))
+    finally: session.close()
+
+
+@bp.get("/shared/groups/<token>/lectures/<lecture_id>/voiceover")
+def shared_group_voiceover(token: str, lecture_id: str):
+    session = db.session()
+    try: return _voiceover(_group_lecture(session, token, lecture_id))
     finally: session.close()

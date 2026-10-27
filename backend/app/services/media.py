@@ -155,7 +155,10 @@ class MediaService:
             probe = _run(
                 [
                     self.tools.ffmpeg, "-hide_banner", "-loglevel", "error",
-                    "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                    # Recent NVIDIA drivers reject tiny frames even though
+                    # NVENC itself is healthy. 256x256 is supported by both
+                    # old cards (including RTX 2060) and current drivers.
+                    "-f", "lavfi", "-i", "color=c=black:s=256x256:d=0.1",
                     "-frames:v", "1", "-c:v", "h264_nvenc", "-f", "null", "-",
                 ],
                 timeout=20,

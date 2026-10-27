@@ -38,14 +38,22 @@
 
 Поля: `file` (обязательно), `title`, `description`, `asr_profile` (`accurate` | `fast`),
 `asr_engine` (`vosk` | `whisper`), `use_gpu` (`true`/`false`), `llm_mode` (`api` | `local`),
-`visibility` (`private` | `public`), `group_id`.
+`language` (`ru` | `en`), `target_language` (`ru` | `en`, необязательно), `voiceover`
+(`true`/`false`), `visibility` (`private` | `public`), `group_id`.
+
+`target_language` должен отличаться от исходного. Перевод разрешён только при
+`llm_mode=api`; локальная модель не используется как переводчик. `voiceover=true`
+допустим только вместе с переводом.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/api/lectures `
   -F "file=@videos_examples\пример_1.mp4" `
   -F "title=Геометрия: тела вращения" `
   -F "asr_profile=accurate" `
-  -F "llm_mode=api"
+  -F "llm_mode=api" `
+  -F "language=ru" `
+  -F "target_language=en" `
+  -F "voiceover=true"
 ```
 
 Ответ `202`:
@@ -58,7 +66,8 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 
 ```json
 { "url": "https://www.youtube.com/watch?v=…", "title": "Необязательно",
-  "asr_profile": "fast", "llm_mode": "api" }
+  "asr_profile": "fast", "llm_mode": "api", "language": "en",
+  "target_language": "ru", "voiceover": true }
 ```
 
 Требует `tools/yt-dlp/yt-dlp.exe`; иначе `501 ytdlp_missing`.
@@ -71,7 +80,8 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 ### `PATCH /lectures/{id}`
 
 ```json
-{ "title": "Новое название", "description": "…" }
+{ "title": "Новое название", "description": "…", "visibility": "public",
+  "group_id": "uuid-или-null" }
 ```
 
 ### `DELETE /lectures/{id}`
@@ -111,7 +121,8 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 ```json
 { "duration_sec": 451.86,
   "segments": [ { "idx": 0, "start_sec": 0.0, "end_sec": 9.2,
-                  "timestamp": "0:00", "text": "Всем привет…" } ] }
+                  "timestamp": "0:00", "text": "Hello…",
+                  "translated_text": "Привет…" } ] }
 ```
 
 ### `GET /lectures/{id}/structure`
@@ -140,7 +151,8 @@ data: {"status":"ready","progress":100,…}
 ### `GET /lectures/{id}/media`
 
 Видео с `Accept-Ranges: bytes` (перемотка). `GET /thumbnail` — превью JPEG.
-`GET /subtitles.vtt` — субтитры WebVTT.
+`GET /subtitles.vtt?lang=ru|en` — WebVTT на выбранном доступном языке.
+`GET /voiceover` — сгенерированная дополнительная MP3-дорожка перевода.
 
 ## Поиск
 
@@ -232,10 +244,15 @@ data: {"status":"ready","progress":100,…}
 | `GET` | `/public/lectures/{id}` | карточка, конспект и структура публичной лекции |
 | `GET` | `/public/lectures/{id}/media` | видео с поддержкой Range |
 | `GET` | `/public/lectures/{id}/transcript` | транскрипт с таймкодами |
+| `GET` | `/public/lectures/{id}/subtitles.vtt?lang=…` | субтитры выбранного языка |
+| `GET` | `/public/lectures/{id}/voiceover` | дополнительная озвучка |
 | `GET` | `/public/lectures/{id}/search?q=…` | поиск внутри лекции |
 | `POST` | `/public/lectures/{id}/qa` | вопрос по лекции |
 | `GET` | `/shared/videos/{token}` | лекция по приватной ссылке |
 | `GET` | `/shared/groups/{token}` | группа по приватной ссылке |
+| `GET` | `/shared/videos/{token}/transcript` | транскрипт по приватной ссылке |
+| `GET` | `/shared/videos/{token}/subtitles.vtt?lang=…` | субтитры по приватной ссылке |
+| `GET` | `/shared/videos/{token}/voiceover` | озвучка по приватной ссылке |
 
 Каталог: `{ "items": [ { "id": "…", "title": "…", "owner_name": "…", "group_name": "…",
 "thumbnail_url": "/api/public/lectures/{id}/thumbnail", … } ] }`.
@@ -334,6 +351,12 @@ data: {"status":"ready","progress":100,…}
 | `ytdlp_missing` | 501 | импорт по ссылке недоступен |
 | `query_too_short` | 400 | запрос короче 2 символов |
 | `bad_llm_mode` | 400 | неизвестный режим конспекта |
+| `translation_requires_api` | 400 | перевод выбран вместе с локальной LLM |
+| `translation_api_unavailable` | 503 | DeepSeek API недоступен во время перевода |
+| `translation_incomplete` | 503 | API вернул не все сегменты перевода |
+| `voiceover_requires_translation` | 400 | озвучка включена без языка перевода |
+| `tts_unavailable` | 503 | модуль озвучки не установлен |
+| `tts_failed` | 503 | не удалось создать фрагмент или собрать дорожку |
 | `transcript_missing` | 409 | пересборка конспекта до расшифровки |
 | `worker_disabled` | 503 | фоновый воркер не запущен |
 | `internal_error` | 500 | непредвиденная ошибка (детали в логе) |

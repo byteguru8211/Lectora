@@ -1,6 +1,6 @@
 ﻿# Подготовка окружения Lectora: venv, зависимости, база, фронтенд.
 # Запуск:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-param([switch]$Cuda, [switch]$Cpu)
+param([switch]$Cuda, [switch]$Cpu, [switch]$DownloadAssets)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -70,6 +70,38 @@ if ($Cpu) {
 if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить зависимости backend"; exit 1 }
 Write-Host "Зависимости установлены"
 
+if ($DownloadAssets) {
+  Write-Step "Загружаем модели и переносимые инструменты"
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\install_assets.ps1
+  if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить модели или инструменты"; exit 1 }
+}
+
+Write-Step "Дополнительные инструменты"
+if (-not (Test-Path "tools\yt-dlp\yt-dlp.exe")) {
+  Write-Host "Скачиваем yt-dlp для импорта видео по ссылке"
+  New-Item -ItemType Directory -Force "tools\yt-dlp" | Out-Null
+  try {
+    Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "tools\yt-dlp\yt-dlp.exe"
+  } catch {
+    Remove-Item -LiteralPath "tools\yt-dlp\yt-dlp.exe" -Force -ErrorAction SilentlyContinue
+    Write-Warning "Не удалось скачать yt-dlp: $($_.Exception.Message)"
+  }
+}
+
+if (-not (Test-Path "tools\FreeDeepseekAPI\server.js")) {
+  if (Get-Command git -ErrorAction SilentlyContinue) {
+    Write-Host "Клонируем FreeDeepseekAPI для подробных конспектов"
+    if (Test-Path "tools\FreeDeepseekAPI") {
+      Write-Warning "tools\FreeDeepseekAPI существует, но server.js отсутствует — автоматическая установка пропущена"
+    } else {
+      & git clone --depth 1 https://github.com/ForgetMeAI/FreeDeepseekAPI.git "tools\FreeDeepseekAPI"
+      if ($LASTEXITCODE -ne 0) { Write-Warning "Не удалось клонировать FreeDeepseekAPI" }
+    }
+  } else {
+    Write-Warning "Git не найден: FreeDeepseekAPI нужно скачать вручную в tools\FreeDeepseekAPI"
+  }
+}
+
 Write-Step "Конфигурация"
 if (-not (Test-Path ".env")) {
   Copy-Item ".env.example" ".env"
@@ -88,6 +120,7 @@ $checks = @(
   @{ Path = "models\llm\Qwen2.5-7B-Instruct-Q4_K_M.gguf"; Hint = "GGUF-модель в models\llm" },
   @{ Path = "tools\llama-vulkan\llama-server.exe"; Hint = "llama.cpp (Vulkan) в tools\llama-vulkan" },
   @{ Path = "tools\yt-dlp\yt-dlp.exe"; Hint = "yt-dlp.exe в tools\yt-dlp (импорт по ссылке)" }
+  @{ Path = "tools\FreeDeepseekAPI\server.js"; Hint = "FreeDeepseekAPI в tools\FreeDeepseekAPI (подробный конспект DeepSeek)" }
 )
 $missing = @()
 foreach ($check in $checks) {
@@ -143,4 +176,7 @@ if ($missing.Count -gt 0) {
   Write-Host "Инструкции по загрузке — в README.md, раздел «Установка моделей и инструментов»."
 } else {
   Write-Host "Всё на месте. Запуск: powershell -ExecutionPolicy Bypass -File scripts\run.ps1"
+}
+if ((Test-Path "tools\FreeDeepseekAPI\server.js") -and -not (Test-Path "tools\FreeDeepseekAPI\deepseek-auth.json")) {
+  Write-Warning "Для DeepSeek остался один интерактивный шаг: cd tools\FreeDeepseekAPI; npm run auth"
 }

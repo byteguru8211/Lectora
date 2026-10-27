@@ -44,6 +44,7 @@ from .search import search_service
 from .storage import Storage, free_disk_gb
 from .summarizer import summarizer
 from .whisper_asr import WhisperAsrService
+from .translation import translation_service
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ STAGE_LABELS = {
     "model": "Загрузка модели распознавания",
     "transcribe": "Распознавание речи",
     "punctuate": "Оформление текста",
+    "translate": "Перевод субтитров",
+    "voiceover": "Создание озвучки",
     "embed": "Семантический индекс",
     "notes": "Конспект и структура",
     "notes_map": "Конспект: разбор фрагментов",
@@ -226,8 +229,11 @@ class Pipeline:
                             use_gpu=lecture.use_gpu,
                             on_progress=lambda ratio: progress.update("transcribe", 18.0 + 50.0 * ratio),
                             duration_hint=duration,
+                            language=lecture.language,
                         )
                     except Exception as exc:
+                        if lecture.language != "ru":
+                            raise
                         log.warning("Whisper failed (%s); falling back to Vosk", exc)
                         progress.update("model", 18.5, force=True)
                         transcription = self.asr.transcribe(
@@ -258,6 +264,16 @@ class Pipeline:
             segments: list[Segment] = self._punctuate(transcription.segments)
             if not segments:
                 raise ApiError("Не удалось разбить распознанный текст", 422, "empty_transcript")
+
+            translations: list[str | None] = [None] * len(segments)
+            if lecture.target_language and lecture.target_language != lecture.language:
+                progress.update("translate", 68.0, force=True)
+                translated = translation_service.translate(
+                    [normalize_space(segment.text) for segment in segments],
+                    lecture.language,
+                    lecture.target_language,
+                )
+                translations = list(translated)
 
             progress.update("embed", 70.0, force=True)
             chunks = build_chunks(
@@ -291,6 +307,7 @@ class Pipeline:
                     "start_sec": segment.start_sec,
                     "end_sec": segment.end_sec,
                     "text": normalize_space(segment.text),
+                    "translated_text": translations[index],
                     "words": [word.as_dict() for word in segment.words],
                 }
                 for index, segment in enumerate(segments)
@@ -323,6 +340,15 @@ class Pipeline:
             progress.update("notes", 84.0, force=True)
             notes = self._build_notes(lecture, segments, progress)
             self._store_notes(session, lecture, notes)
+
+            if lecture.voiceover_enabled and lecture.target_language and any(translations):
+                progress.update("voiceover", 96.0, force=True)
+                voice_path = translation_service.synthesize(
+                    " ".join(item for item in translations if item),
+                    media_dir / f"voiceover-{lecture.target_language}.mp3",
+                    lecture.target_language,
+                )
+                lecture.voiceover_path = self.storage.relative(voice_path)
 
             progress.update("finalize", 98.0, force=True)
             lecture.status = "ready"

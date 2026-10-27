@@ -40,6 +40,9 @@ def lecture_card(lecture: Lecture) -> dict:
         "asr_profile": lecture.asr_profile,
         "asr_engine": lecture.asr_engine,
         "use_gpu": bool(lecture.use_gpu),
+        "language": lecture.language,
+        "target_language": lecture.target_language,
+        "voiceover_enabled": bool(lecture.voiceover_enabled),
         "segment_count": lecture.segment_count,
         "chunk_count": lecture.chunk_count,
         "word_count": lecture.word_count,
@@ -66,6 +69,7 @@ def lecture_detail(lecture: Lecture, sections: Iterable[Section] | None = None) 
             "sections": [section_dict(section) for section in (sections or [])],
             "media_url": f"/api/lectures/{lecture.id}/media",
             "subtitles_url": f"/api/lectures/{lecture.id}/subtitles.vtt",
+            "voiceover_url": f"/api/lectures/{lecture.id}/voiceover" if lecture.voiceover_path else None,
             "created_at": iso(lecture.created_at),
             "updated_at": iso(lecture.updated_at),
         }
@@ -95,6 +99,7 @@ def segment_dict(segment: TranscriptSegment) -> dict:
         "end_sec": round(segment.end_sec, 2),
         "timestamp": format_timestamp(segment.start_sec),
         "text": segment.text,
+        "translated_text": segment.translated_text,
     }
 
 

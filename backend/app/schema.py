@@ -43,6 +43,11 @@ MIGRATIONS = (
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS llm_mode_used VARCHAR(16)",
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS questions JSONB NOT NULL DEFAULT '[]'::jsonb",
     "ALTER TABLE sections ADD COLUMN IF NOT EXISTS details TEXT",
+    # 1.6.0: bilingual transcripts and optional translated narration
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS target_language VARCHAR(8)",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS voiceover_enabled BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS voiceover_path VARCHAR(512)",
+    "ALTER TABLE transcript_segments ADD COLUMN IF NOT EXISTS translated_text TEXT",
 )
 
 

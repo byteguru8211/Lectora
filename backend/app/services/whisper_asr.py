@@ -55,6 +55,7 @@ class WhisperAsrService:
         use_gpu: bool = True,
         on_progress: ProgressCb | None = None,
         duration_hint: float | None = None,
+        language: str = "ru",
     ) -> Transcription:
         if use_gpu and not self._cuda_available():
             log.info("CUDA unavailable for Whisper; using CPU")
@@ -65,7 +66,7 @@ class WhisperAsrService:
         # metadata_errors argument that faster-whisper passes to av.open.
         raw_segments, info = model.transcribe(
             self._read_wav(wav_path),
-            language="ru",
+            language=language,
             beam_size=5,
             vad_filter=True,
             word_timestamps=True,

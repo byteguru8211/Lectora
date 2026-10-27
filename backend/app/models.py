@@ -89,6 +89,9 @@ class Lecture(Base):
     width: Mapped[int | None] = mapped_column(Integer)
     height: Mapped[int | None] = mapped_column(Integer)
     language: Mapped[str] = mapped_column(String(8), default="ru")
+    target_language: Mapped[str | None] = mapped_column(String(8))
+    voiceover_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    voiceover_path: Mapped[str | None] = mapped_column(String(512))
     asr_profile: Mapped[str] = mapped_column(String(16), default="accurate")
     asr_engine: Mapped[str] = mapped_column(String(16), default="vosk")
     use_gpu: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -165,6 +168,7 @@ class TranscriptSegment(Base):
     start_sec: Mapped[float] = mapped_column(Float, nullable=False)
     end_sec: Mapped[float] = mapped_column(Float, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    translated_text: Mapped[str | None] = mapped_column(Text)
     words: Mapped[list | None] = mapped_column(JSONB)
 
     lecture: Mapped[Lecture] = relationship(back_populates="segments")

@@ -360,6 +360,10 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
                 src={lecture.media_url}
                 poster={lecture.thumbnail_url}
                 subtitlesUrl={lecture.subtitles_url}
+                segments={segments}
+                sourceLanguage={lecture.language}
+                targetLanguage={lecture.target_language}
+                voiceoverUrl={lecture.voiceover_url}
                 sections={lecture.sections}
                 currentTime={currentTime}
                 seekRequest={seekRequest}
@@ -383,9 +387,10 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
                   <button className="chip chip--button" onClick={downloadTranscript}>
                     <DownloadIcon size={12} /> транскрипт .txt
                   </button>
-                  <a className="chip chip--button" href={lecture.subtitles_url} download="lecture.vtt">
-                    <DownloadIcon size={12} /> субтитры .vtt
+                  <a className="chip chip--button" href={`${lecture.subtitles_url}?lang=${lecture.language}`} download={`lecture-${lecture.language}.vtt`}>
+                    <DownloadIcon size={12} /> субтитры {lecture.language.toUpperCase()}
                   </a>
+                  {lecture.target_language && <a className="chip chip--button" href={`${lecture.subtitles_url}?lang=${lecture.target_language}`} download={`lecture-${lecture.target_language}.vtt`}><DownloadIcon size={12} /> субтитры {lecture.target_language.toUpperCase()}</a>}
                   <span className="player-toolbar__time">
                     <strong>{formatClock(currentTime)}</strong> / {formatClock(duration || lecture.duration_sec)}
                   </span>

@@ -35,6 +35,9 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
   const [groupId, setGroupId] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupVisibility, setNewGroupVisibility] = useState<"private" | "public">("private");
+  const [language, setLanguage] = useState<"ru" | "en">("ru");
+  const [targetLanguage, setTargetLanguage] = useState<"" | "ru" | "en">("");
+  const [voiceover, setVoiceover] = useState(false);
   const [url, setUrl] = useState("");
   const [progress, setProgress] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -54,6 +57,9 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setVisibility("private");
     setGroupId("");
     setNewGroupName("");
+    setLanguage("ru");
+    setTargetLanguage("");
+    setVoiceover(false);
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busy) onClose();
     };
@@ -64,6 +70,13 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
   useEffect(() => {
     if (open) api.groups().then((response) => setGroups(response.items)).catch(() => setGroups([]));
   }, [open]);
+
+  useEffect(() => {
+    if (llmMode === "local") {
+      setTargetLanguage("");
+      setVoiceover(false);
+    }
+  }, [llmMode]);
 
   useEffect(() => {
     if (!open) return;
@@ -95,7 +108,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setProgress(0);
     try {
       const result = await uploadLecture(
-        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile, asrEngine, useGpu, visibility, groupId: groupId || undefined, llmMode },
+        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile, asrEngine: language === "en" ? "whisper" : asrEngine, useGpu, visibility, groupId: groupId || undefined, llmMode, language, targetLanguage: targetLanguage || undefined, voiceover },
         setProgress,
       );
       toast.success("Видео загружено, начинаем обработку");
@@ -118,7 +131,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile, useGpu, asrEngine, visibility, groupId || undefined, llmMode);
+      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile, useGpu, language === "en" ? "whisper" : asrEngine, visibility, groupId || undefined, llmMode, language, targetLanguage || undefined, voiceover);
       toast.success("Ссылка принята, видео скачивается");
       onClose();
       navigate(`/lectures/${result.id}`);
@@ -273,6 +286,29 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
               <p className="small muted">Видео можно объединять в собственные коллекции.</p>
             </div>
           </div>
+
+          <div className="upload-access-grid">
+            <div className="field">
+              <span className="field__label">Язык видео</span>
+              <select className="select" value={language} onChange={(event) => { const value = event.target.value as "ru" | "en"; setLanguage(value); if (targetLanguage === value) setTargetLanguage(""); if (value === "en") setAsrEngine("whisper"); }} disabled={busy}>
+                <option value="ru">Русский</option><option value="en">Английский</option>
+              </select>
+            </div>
+            <div className="field">
+              <span className="field__label">Перевести на</span>
+              <select className="select" value={targetLanguage} onChange={(event) => { const value = event.target.value as "" | "ru" | "en"; setTargetLanguage(value); if (!value) setVoiceover(false); }} disabled={busy || llmMode !== "api"}>
+                <option value="">Не переводить</option>
+                {language !== "ru" && <option value="ru">Русский</option>}
+                {language !== "en" && <option value="en">Английский</option>}
+              </select>
+              {llmMode !== "api" && <p className="small muted">Перевод доступен только в режиме DeepSeek API.</p>}
+            </div>
+          </div>
+          {targetLanguage && <label className={`gpu-option ${voiceover ? "is-active" : ""}`}>
+            <span className="gpu-option__text"><strong>{targetLanguage === "en" ? "Английская" : "Русская"} озвучка</strong><small>Создать дополнительную аудиодорожку по переводу</small></span>
+            <input type="checkbox" checked={voiceover} onChange={(event) => setVoiceover(event.target.checked)} disabled={busy} />
+            <span className="gpu-switch" aria-hidden="true" />
+          </label>}
 
           <div className="new-group-row">
             <input className="input" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Новая группа…" disabled={busy} />

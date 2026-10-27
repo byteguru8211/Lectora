@@ -1,14 +1,14 @@
 # Lectora — семантический поиск по видеолекциям
 
-Локальный продукт для студентов и преподавателей: загружаете видеолекцию — получаете
-транскрипт с таймкодами, поиск по смыслу, конспект со структурой и возможность задавать
-вопросы по содержанию. Всё работает **офлайн на своём железе**: ни API-ключей, ни облака.
+Платформа для работы с любыми образовательными и информационными видео: загрузите файл
+или ссылку и получите транскрипт с таймкодами, семантический поиск, структурированный
+конспект, перевод, двойные субтитры, дополнительную озвучку и Q&A по содержанию.
 
 ![Библиотека лекций](docs/screenshots/01-library.png)
 
 <p align="center">
   <img src="docs/screenshots/03-lecture-search.png" width="49%" alt="Поиск внутри лекции" />
-  <img src="docs/screenshots/04-lecture-qa.png" width="49%" alt="Вопросы по лекции" />
+  <img src="docs/screenshots/06-player-subtitles.png" width="49%" alt="Двойные субтитры и настройки плеера" />
 </p>
 
 ---
@@ -19,27 +19,34 @@
 |---|---|
 | Загрузка MP4/WebM/MOV/MKV и ссылок YouTube/Vimeo | потоковая запись на диск, ffprobe/ffmpeg, `yt-dlp` |
 | Автоматическое название лекции | LLM придумывает осмысленное имя по содержанию, если пользователь не задал своё |
-| Автоматическая транскрибация | **Vosk** (`ru-0.42` — точная, `small-ru` — быстрая), два профиля на выбор |
-| Таймкоды до секунды | слово-уровневые тайминги Vosk → субтитры и сегменты транскрипта |
+| Регистрация и роли | аккаунты студентов и преподавателей, изолированные личные библиотеки |
+| Автоматическая транскрибация | **Whisper** на CUDA/CPU для RU/EN и **Vosk** как быстрый офлайн-резерв |
+| Таймкоды до секунды | сегменты и слова Whisper/Vosk → субтитры и кликабельный транскрипт |
+| Перевод и озвучка | RU ↔ EN через DeepSeek API, один или два языка субтитров, дополнительная русская/английская дорожка |
 | Семантический поиск | **bge-m3** (эмбеддинги) + полнотекстовый индекс PostgreSQL + **bge-reranker-v2-m3** |
 | Поиск по всему курсу | гибридный поиск по всем готовым лекциям сразу, с переходом на таймкод |
 | Конспект и структура лекции | локальная LLM **Qwen2.5-7B-Instruct (GGUF)** через `llama.cpp`, с экстрактивным фолбэком |
 | Просмотр с навигацией | **Plyr**, главы прямо в плеере (работают и в полноэкранном режиме), синхронные субтитры, транскрипт по главам |
 | Вопросы по лекции | RAG: поиск фрагментов + ответ локальной LLM со ссылками на таймкоды |
 | Публичная библиотека | каталог публичных лекций и публичных групп, карточки авторов, ссылки на шаринг |
+| Личный кабинет | ручные группы, автокатегории/подкатегории, видимость видео и коллекций, приватные ссылки |
 | Рекомендации «Для Вас» | профиль интересов из загруженных лекций и просмотров, устойчивое к морфологии сопоставление тем, популярность и свежесть как тай-брейкеры |
 | Красивый интерфейс | React 19 + TypeScript, тёмная/светлая тема, командная палитра `Ctrl+K` |
 
 Дополнительно: очередь обработки с восстановлением после перезапуска, SSE-прогресс,
 аналитика поиска, health-check, статистика, докачиваемые модели, CLI для пакетной обработки.
 
-### Поиск по всему курсу
+### Публичная библиотека
 
-![Поиск по курсу](docs/screenshots/05-course-search.png)
+![Публичная библиотека](docs/screenshots/04-public-library.png)
 
-### Плеер с главами
+### Личный кабинет и группы
 
-![Главы в плеере](docs/screenshots/06-player-chapters.png)
+![Личный кабинет и группы](docs/screenshots/05-account-groups.png)
+
+### Загрузка, перевод и озвучка
+
+![Язык, перевод, видимость и группы при загрузке](docs/screenshots/02-upload-translation.png)
 
 ---
 
@@ -48,22 +55,40 @@
 > Проверено на Windows 11, Python 3.12, Node.js 24, PostgreSQL 17.6, GPU RTX 2080 Super (8 ГБ).
 
 ```powershell
-# 1. подготовка окружения (venv, зависимости, база, сборка фронтенда)
-#    setup сам определит NVIDIA GPU и поставит совместимую CUDA-сборку PyTorch
-powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
+# Одна команда: установит зависимости и модели, соберёт и запустит проект
+.\start.bat
+```
 
-# 2. запуск всего стека (PostgreSQL + локальная LLM + backend)
-powershell -ExecutionPolicy Bypass -File scripts\run.ps1
+При первом запуске будет скачано около 12–15 ГБ. Скрипт автоматически:
 
-# 3. опционально: DeepSeek API для самых подробных конспектов
-powershell -ExecutionPolicy Bypass -File scripts\start_api_llm.ps1
+* при необходимости устанавливает Python 3.12 и Node.js LTS через `winget`;
+* создаёт `.venv`, выбирает CUDA- или CPU-сборку PyTorch и ставит backend-пакеты;
+* скачивает обе модели Vosk, faster-whisper-small, bge-m3, reranker и Qwen GGUF;
+* устанавливает portable PostgreSQL, FFmpeg, llama.cpp Vulkan, yt-dlp и FreeDeepseekAPI;
+* создаёт базу, собирает React-фронтенд и запускает весь стек.
+
+Загрузка возобновляется после обрыва, а уже установленные многогигабайтные файлы
+пропускаются. Если DeepSeek ещё не авторизован, при первом запуске откроется однократный
+интерактивный вход. Последующие запуски выполняются той же командой и ничего не скачивают.
+
+Принудительно использовать только CPU:
+
+```powershell
+.\start.bat -Cpu
+```
+
+Для автоматизированной установки без окна авторизации DeepSeek:
+
+```powershell
+.\start.bat -SkipDeepSeekAuth -LlmBackend local
 ```
 
 Откройте <http://127.0.0.1:8000>. Остановить всё: `scripts\stop.ps1`.
+Подробная установка, параметры и диагностика: [docs/INSTALLATION.md](docs/INSTALLATION.md).
 
-**Первые 3–4 минуты после старта** идёт прогрев моделей (Vosk читает 3,4 ГБ модели).
+**Первые 2–4 минуты после старта** может идти прогрев моделей.
 Интерфейс доступен сразу, но первая загрузка лекции будет ждать загрузку ASR-модели.
-Для защиты нажмите «Загрузить» через пару минут после `run.ps1`.
+Для защиты нажмите «Загрузить» через пару минут после `start.bat`.
 
 ### Два режима конспекта
 
@@ -109,7 +134,8 @@ Lectora:
 * Windows 10/11, PowerShell 5.1+
 * Python 3.12 (venv)
 * Node.js 20+ (сборка фронтенда)
-* ~16 ГБ RAM, 8 ГБ VRAM (для 7B-модели), 15 ГБ на диске под модели и инструменты
+* ~16 ГБ RAM, 6 ГБ VRAM для API-режима или 8 ГБ для одновременной локальной 7B-модели,
+  15 ГБ на диске под модели и инструменты
 * GPU не обязателен: `setup.ps1` сам ставит CUDA-сборку PyTorch при наличии NVIDIA GPU,
   иначе — CPU-сборку; без GPU LLM пойдёт на CPU (медленнее, но работает)
 
@@ -117,13 +143,17 @@ Lectora:
 
 ## Установка моделей и инструментов
 
-Всё складывается в `models/` и `tools/` — эти папки не коммитятся (12+ ГБ), их нужно
-подготовить один раз. Полный список с размерами:
+Рекомендуемый способ — `start.bat` из раздела «Быстрый старт». Он автоматически скачивает
+всё ниже, продолжает прерванные загрузки и пропускает уже готовые файлы. Для установки
+только весов и portable-инструментов запустите `scripts\install_assets.ps1`.
+
+Всё складывается в `models/` и `tools/` — эти папки не коммитятся. Полный список:
 
 | Что | Куда | Размер | Ссылка |
 |---|---|---|---|
 | Vosk RU (точная) | `models/vosk/vosk-model-ru-0.42/` | 1,8 ГБ | <https://alphacephei.com/vosk/models/vosk-model-ru-0.42.zip> |
 | Vosk RU (быстрая) | `models/vosk/vosk-model-small-ru-0.22/` | 45 МБ | <https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip> |
+| faster-whisper-small | `models/whisper/` (HF cache) | ~500 МБ | <https://huggingface.co/Systran/faster-whisper-small> |
 | Эмбеддинги bge-m3 | `models/embeddings/bge-m3/` | 2,3 ГБ | <https://huggingface.co/BAAI/bge-m3> |
 | Реранкер bge-reranker-v2-m3 | `models/reranker/bge-reranker-v2-m3/` | 2,3 ГБ | <https://huggingface.co/BAAI/bge-reranker-v2-m3> |
 | `models/llm/Qwen2.5-7B-Instruct-Q4_K_M.gguf` | LLM Qwen2.5-7B Q4_K_M (GGUF) | 4,7 ГБ | <https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF> |
@@ -143,6 +173,8 @@ hf download BAAI/bge-reranker-v2-m3 --local-dir models\reranker\bge-reranker-v2-
   --include "config.json" "model.safetensors" "tokenizer*" "special_tokens_map.json" "sentencepiece.bpe.model"
 
 hf download bartowski/Qwen2.5-7B-Instruct-GGUF Qwen2.5-7B-Instruct-Q4_K_M.gguf --local-dir models\llm
+
+hf download Systran/faster-whisper-small --cache-dir models\whisper
 
 # yt-dlp для импорта по ссылке
 New-Item -ItemType Directory -Force tools\yt-dlp | Out-Null
@@ -196,8 +228,8 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
 
 ### Пайплайн обработки
 
-`upload → (download) → probe → (transcode) → thumbnail → audio 16k mono → Vosk → пунктуация →
-чанки → эмбеддинги → конспект, структура и название → ready`
+`upload → (download) → probe → (transcode) → thumbnail → audio 16k mono → Whisper/Vosk →
+пунктуация → (перевод → озвучка) → чанки → эмбеддинги → конспект и структура → ready`
 
 * Для импорта по ссылке первая стадия — `download` (yt-dlp), затем обычный пайплайн.
 * Конспект выбирает один из двух режимов (`api` / `local`); API-режим добавляет
@@ -238,7 +270,8 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
 | Фронтенд | React 19, TypeScript, Vite 7, React Router 7, Plyr 3, нативный CSS |
 | Бэкенд | Python 3.12, Flask 3, SQLAlchemy 2, waitress, SSE |
 | БД | PostgreSQL 17 (полнотекстовый поиск `russian`, JSONB, очередь задач) |
-| ASR | Vosk 0.3.45, модели `ru-0.42` / `small-ru-0.22` |
+| ASR | faster-whisper + CUDA/CPU, Vosk 0.3.45 (`ru-0.42` / `small-ru-0.22`) |
+| Перевод / TTS | DeepSeek API, edge-tts, фрагментная сборка через FFmpeg |
 | Эмбеддинги | sentence-transformers, BAAI/bge-m3 (1024d) |
 | Реранкер | BAAI/bge-reranker-v2-m3 |
 | LLM | Qwen2.5-7B-Instruct Q4_K_M, llama.cpp (Vulkan), OpenAI-совместимый API |
@@ -289,6 +322,7 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 | `GET` | `/api/lectures/{id}/events` | SSE-прогресс обработки |
 | `GET` | `/api/lectures/{id}/media` | видео с поддержкой Range |
 | `GET` | `/api/lectures/{id}/subtitles.vtt` | субтитры |
+| `GET` | `/api/lectures/{id}/voiceover` | дополнительная дорожка перевода |
 | `GET` | `/api/search?q=…` | семантический поиск (по лекции или курсу) |
 | `POST` | `/api/lectures/{id}/qa` | вопрос по лекции |
 | `GET` | `/api/public/lectures` | публичный каталог |
@@ -316,8 +350,8 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 backend/
   app/
     api/          REST-эндпоинты (lectures, search, qa, sharing, recommendations, system)
-    services/     asr, media, embeddings, reranker, llm, llm_api, llm_modes,
-                  summarizer, search, recommendations, pipeline, jobs
+    services/     asr/whisper, translation/TTS, media, embeddings, reranker,
+                  llm, summarizer, search, recommendations, pipeline, jobs
     utils/        текст, таймкоды
     models.py     схема БД
     config.py     настройки из .env
@@ -329,7 +363,7 @@ frontend/
     components/   плеер, таймлайн, транскрипт, панели, модалки
     pages/        библиотека, публичная библиотека, лекция, поиск, вход
     styles/       дизайн-система (CSS-переменные)
-scripts/          setup / run / stop / start_server / install_gpu / start_api_llm / check_llm_modes
+scripts/          bootstrap / setup / install_assets / run / stop / capture_screenshots
 docs/             архитектура, API, сценарий демо, скриншоты
 models/           (не коммитится) веса моделей
 tools/            (не коммитится) ffmpeg, PostgreSQL, llama.cpp, FreeDeepseekAPI
@@ -361,8 +395,12 @@ data/             (не коммитится) кластер PostgreSQL и ло�
 
 * Vosk не расставляет знаки препинания — работает детерминированное восстановление,
   при `PUNCTUATION_MODE=llm` подключается редактура локальной моделью.
-* ASR ошибается на формулах и латинице («A1B1C1D1» → «а один байден седен») — это ограничение
-  акустической модели, а не поиска; при необходимости можно добавить второй движок (GigaAM/Whisper).
+* Качество ASR зависит от записи и языка. Whisper выбран основным точным движком, Vosk —
+  полностью локальным резервом для русской речи.
+* Перевод доступен только в режиме DeepSeek API: локальная Qwen предназначена для
+  конспектов и Q&A и не подменяет переводчик.
+* edge-tts зависит от внешнего сервиса. Текст режется на части, каждая часть повторяется до
+  трёх раз и кэшируется, а готовая дорожка собирается через FFmpeg.
 * Очередь рассчитана на один узел; для кластера достаточно вынести воркеры и заменить
   in-memory кэш эмбеддингов на pgvector.
 * DeepSeek API — это веб-аккаунт через неофициальный прокси: DeepSeek может изменить
