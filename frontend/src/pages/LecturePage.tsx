@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, ApiError, subscribeProgress } from "../api/client";
-import type { LectureDetail, LectureStatus, SearchHit, Segment } from "../api/types";
+import type { LectureDetail, LectureStatus, LlmMode, SearchHit, Segment } from "../api/types";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { NotesModeDialog } from "../components/NotesModeDialog";
 import { NotesPane } from "../components/NotesPane";
 import { QaPane } from "../components/QaPane";
 import { RenameDialog } from "../components/RenameDialog";
@@ -20,10 +21,12 @@ import {
   PencilIcon,
   RefreshIcon,
   SearchIcon,
+  SparkIcon,
   TrashIcon,
 } from "../components/icons";
 import { useToast } from "../context/ToastContext";
 import { formatClock, formatDate, pluralize } from "../utils/format";
+import { llmModeLabel } from "../utils/llm";
 import { StatusBadge } from "../components/StatusBadge";
 
 type Tab = "notes" | "search" | "qa";
@@ -61,6 +64,8 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
   const [transcriptQuery, setTranscriptQuery] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmReprocess, setConfirmReprocess] = useState(false);
+  const [notesDialogOpen, setNotesDialogOpen] = useState(false);
+  const [notesBusy, setNotesBusy] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameBusy, setRenameBusy] = useState(false);
   const [working, setWorking] = useState(false);
@@ -210,6 +215,20 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
     }
   };
 
+  const rebuildNotes = async (mode: LlmMode) => {
+    setNotesBusy(true);
+    try {
+      await api.regenerateNotes(lectureId, mode);
+      setNotesDialogOpen(false);
+      toast.success(`Конспект собирается заново · ${llmModeLabel(mode)}`);
+      await refresh(true);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Не удалось запустить сборку конспекта");
+    } finally {
+      setNotesBusy(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="stack" style={{ gap: 18 }}>
@@ -272,10 +291,24 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
             )}
             <span className="lecture-meta__dot" />
             <span>{formatDate(lecture.created_at)}</span>
+            {lecture.llm_mode_used && (
+              <>
+                <span className="lecture-meta__dot" />
+                <span>конспект: {llmModeLabel(lecture.llm_mode_used, "short")}</span>
+              </>
+            )}
           </div>
         </div>
 
         {!accessBase && <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() => setNotesDialogOpen(true)}
+            disabled={processing}
+            title="Собрать конспект заново в другом режиме"
+          >
+            <SparkIcon size={14} /> Конспект
+          </button>
           <button className="btn btn--ghost btn--sm" onClick={() => setRenameOpen(true)}>
             <PencilIcon size={14} /> Переименовать
           </button>
@@ -433,8 +466,12 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
                     summary={lecture.summary}
                     sections={lecture.sections}
                     keywords={lecture.keywords}
+                    questions={lecture.questions ?? []}
                     currentTime={currentTime}
                     onSeek={seek}
+                    requestedMode={lecture.llm_mode}
+                    usedMode={lecture.llm_mode_used}
+                    llmModel={lecture.llm_model}
                   />
                 )}
                 {tab === "search" && (
@@ -476,6 +513,15 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
         busy={working}
         onClose={() => setConfirmReprocess(false)}
         onConfirm={reprocess}
+      />}
+
+      {!accessBase && <NotesModeDialog
+        open={notesDialogOpen}
+        initialMode={lecture.llm_mode}
+        usedMode={lecture.llm_mode_used}
+        busy={notesBusy}
+        onSubmit={rebuildNotes}
+        onClose={() => setNotesDialogOpen(false)}
       />}
 
       {!accessBase && <RenameDialog

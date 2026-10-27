@@ -72,6 +72,7 @@ def ask(lecture_id: str):
                 "answer": qa_dict(answer_message),
                 "question": qa_dict(user_message),
                 "llm_used": result.llm_used,
+                "llm_mode": result.mode,
             }
         )
     finally:

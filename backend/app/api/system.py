@@ -15,6 +15,8 @@ from ..models import Chunk, Job, Lecture, SearchLog, TranscriptSegment
 from ..services.asr import AsrService
 from ..services.embeddings import embeddings
 from ..services.llm import llm
+from ..services.llm_api import api_llm
+from ..services.llm_modes import MODE_LABELS, default_mode, describe_modes
 from ..services.media import MediaService
 from ..services.reranker import reranker
 from ..services.storage import free_disk_gb
@@ -42,6 +44,7 @@ def health():
     asr = AsrService()
     profiles = asr.available_profiles()
     llm_health = llm.health()
+    api_llm_health = api_llm.health()
     checks = {
         "database": {"ok": database_ok, "detail": detail},
         "ffmpeg": {"ok": media.available, "issues": media.tools.issues},
@@ -49,6 +52,7 @@ def health():
         "embeddings": {"ok": embeddings.model_path.is_dir()},
         "reranker": {"ok": reranker.available()},
         "llm": llm_health.as_dict(),
+        "llm_api": api_llm_health.as_dict(),
         "url_import": {"ok": bool(media.tools.ytdlp)},
     }
     critical = database_ok and media.available and any(profiles.values())
@@ -97,6 +101,16 @@ def info():
                 "enabled": Config.LLM_ENABLED,
                 "model": Config.LLM_MODEL,
                 "base_url": Config.LLM_BASE_URL,
+                "default_mode": default_mode(),
+                "modes": describe_modes(probe=False)["modes"],
+                "labels": MODE_LABELS,
+            },
+            "llm_api": {
+                "enabled": Config.API_LLM_ENABLED,
+                "model": Config.API_LLM_MODEL,
+                "base_url": Config.API_LLM_BASE_URL,
+                "max_prompt_chars": Config.API_LLM_MAX_PROMPT_CHARS,
+                "session_prefix": Config.API_LLM_SESSION_PREFIX,
             },
             "limits": {
                 "max_upload_mb": Config.MAX_UPLOAD_MB,

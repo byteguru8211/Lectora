@@ -2,6 +2,7 @@ import type {
   HealthResponse,
   LectureCard,
   LectureDetail,
+  LlmMode,
   QaMessage,
   QaResponse,
   SearchResponse,
@@ -55,6 +56,7 @@ export interface UploadPayload {
   useGpu: boolean;
   visibility: "private" | "public";
   groupId?: string;
+  llmMode: LlmMode;
 }
 
 export const api = {
@@ -110,16 +112,23 @@ export const api = {
   deleteLecture: (id: string) =>
     request<void>(`/api/lectures/${id}`, { method: "DELETE" }),
 
-  reprocess: (id: string, asrProfile?: string) =>
+  reprocess: (id: string, options: { asrProfile?: string; llmMode?: LlmMode } = {}) =>
     request<LectureCard & { job_id: number }>(`/api/lectures/${id}/reprocess`, {
       method: "POST",
-      body: JSON.stringify({ asr_profile: asrProfile }),
+      body: JSON.stringify({ asr_profile: options.asrProfile, llm_mode: options.llmMode }),
     }),
 
-  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate", useGpu = false, asrEngine: "vosk" | "whisper" = "vosk", visibility: "private" | "public" = "private", groupId?: string) =>
+  /** Rebuild only the conspectus (transcript and index are kept). */
+  regenerateNotes: (id: string, llmMode?: LlmMode) =>
+    request<LectureCard & { job_id: number }>(`/api/lectures/${id}/notes`, {
+      method: "POST",
+      body: JSON.stringify({ llm_mode: llmMode }),
+    }),
+
+  importUrl: (url: string, title?: string, asrProfile: "accurate" | "fast" = "accurate", useGpu = false, asrEngine: "vosk" | "whisper" = "vosk", visibility: "private" | "public" = "private", groupId?: string, llmMode: LlmMode = "api") =>
     request<UploadResult>("/api/lectures/import", {
       method: "POST",
-      body: JSON.stringify({ url, title, asr_profile: asrProfile, use_gpu: useGpu, asr_engine: asrEngine, visibility, group_id: groupId }),
+      body: JSON.stringify({ url, title, asr_profile: asrProfile, use_gpu: useGpu, asr_engine: asrEngine, visibility, group_id: groupId, llm_mode: llmMode }),
     }),
 
   health: () => request<HealthResponse>("/api/health"),
@@ -156,6 +165,7 @@ export function uploadLecture(
     form.append("use_gpu", String(payload.useGpu));
     form.append("visibility", payload.visibility);
     if (payload.groupId) form.append("group_id", payload.groupId);
+    form.append("llm_mode", payload.llmMode);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/lectures");

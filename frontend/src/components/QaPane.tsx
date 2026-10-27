@@ -3,6 +3,7 @@ import { api, ApiError } from "../api/client";
 import type { QaMessage } from "../api/types";
 import { useToast } from "../context/ToastContext";
 import { ChatIcon, SparkIcon } from "./icons";
+import { RichText } from "./RichText";
 
 interface Props {
   lectureId: string;
@@ -101,7 +102,9 @@ export function QaPane({ lectureId, suggestions, onSeek, askRequest, hideHistory
 
         {messages.map((message) => (
           <div key={message.id} className={`qa__msg ${message.role === "user" ? "qa__msg--user" : ""}`}>
-            <div className="qa__bubble">{message.content}</div>
+            <div className="qa__bubble">
+              {message.role === "assistant" ? <RichText text={message.content} /> : message.content}
+            </div>
             {message.citations.length > 0 && (
               <div className="qa__citations">
                 {message.citations.map((citation, index) => (

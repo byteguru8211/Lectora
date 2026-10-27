@@ -41,8 +41,7 @@ from .embeddings import embeddings
 from .llm import llm
 from .media import MediaService
 from .search import search_service
-from .storage import Storage
-from .storage import free_disk_gb
+from .storage import Storage, free_disk_gb
 from .summarizer import summarizer
 from .whisper_asr import WhisperAsrService
 
@@ -59,6 +58,10 @@ STAGE_LABELS = {
     "punctuate": "Оформление текста",
     "embed": "Семантический индекс",
     "notes": "Конспект и структура",
+    "notes_map": "Конспект: разбор фрагментов",
+    "notes_outline": "Конспект: план лекции",
+    "notes_details": "Конспект: разделы",
+    "notes_summary": "Конспект: обзор и термины",
     "finalize": "Завершение",
     "done": "Готово",
     "failed": "Ошибка",
@@ -117,6 +120,11 @@ class Pipeline:
             return
         job = session.get(Job, job_id) if job_id else None
         progress = Progress(session, lecture, job)
+        if job is not None and job.kind == "notes":
+            # Rebuild only the conspectus from the stored transcript: no ASR,
+            # no re-indexing, and the chosen LLM mode can be swapped freely.
+            self._process_notes(session, lecture, progress)
+            return
         lecture.status = "processing"
         lecture.error_message = None
         progress.update("probe", 2.0, force=True)
@@ -313,34 +321,8 @@ class Pipeline:
 
             # -- notes -------------------------------------------------
             progress.update("notes", 84.0, force=True)
-            notes = summarizer.build(
-                title="" if lecture.title_auto else lecture.title,
-                segments=segments,
-                duration_sec=duration,
-            )
-            for index, draft in enumerate(notes.sections):
-                session.add(
-                    Section(
-                        lecture_id=lecture.id,
-                        idx=index,
-                        title=draft.title[:300],
-                        summary=draft.summary or None,
-                        start_sec=draft.start_sec,
-                        end_sec=draft.end_sec,
-                        key_points=draft.key_points,
-                    )
-                )
-            lecture.summary = notes.summary
-            lecture.keywords = notes.keywords
-            lecture.llm_model = notes.model if notes.llm_used else None
-            lecture.subject = notes.category or "Другое"
-            lecture.topic = notes.subcategory or (notes.sections[0].title if notes.sections else None)
-            if lecture.title_auto and notes.title:
-                generated = notes.title.strip()
-                if len(generated) >= 3 and generated.lower() != lecture.title.strip().lower():
-                    lecture.title = generated[:300]
-                    log.info("generated title: %s", lecture.title)
-            session.commit()
+            notes = self._build_notes(lecture, segments, progress)
+            self._store_notes(session, lecture, notes)
 
             progress.update("finalize", 98.0, force=True)
             lecture.status = "ready"
@@ -369,6 +351,114 @@ class Pipeline:
         except Exception as exc:  # pragma: no cover - defensive
             log.exception("pipeline crashed %s", lecture.id)
             progress.fail(f"Обработка прервана: {exc}")
+
+    # -- notes-only job -------------------------------------------------
+    def _process_notes(self, session, lecture: Lecture, progress: Progress) -> None:
+        """Rebuild the conspectus from the stored transcript (no ASR/index)."""
+        started = time.perf_counter()
+        lecture.status = "processing"
+        lecture.error_message = None
+        progress.update("notes", 84.0, force=True)
+        log.info("notes job start %s mode=%s", lecture.id, lecture.llm_mode)
+        try:
+            rows = (
+                session.query(TranscriptSegment)
+                .filter(TranscriptSegment.lecture_id == lecture.id)
+                .order_by(TranscriptSegment.idx)
+                .all()
+            )
+            if not rows:
+                raise ApiError(
+                    "Транскрипт лекции не найден — запустите полную обработку.",
+                    409,
+                    "transcript_missing",
+                )
+            segments = [
+                Segment(
+                    start_sec=row.start_sec,
+                    end_sec=row.end_sec,
+                    text=row.text,
+                )
+                for row in rows
+            ]
+            notes = self._build_notes(lecture, segments, progress)
+            self._store_notes(session, lecture, notes)
+
+            progress.update("finalize", 99.0, force=True)
+            lecture.status = "ready"
+            lecture.stage = "done"
+            lecture.progress = 100.0
+            lecture.processed_at = utcnow()
+            lecture.processing_ms = int((time.perf_counter() - started) * 1000)
+            if progress.job is not None:
+                progress.job.status = "done"
+                progress.job.stage = "done"
+                progress.job.progress = 100.0
+                progress.job.finished_at = utcnow()
+            session.commit()
+            log.info(
+                "notes job done %s in %.1fs (mode=%s, model=%s, sections=%d)",
+                lecture.id,
+                time.perf_counter() - started,
+                notes.mode,
+                notes.model or "-",
+                len(notes.sections),
+            )
+        except ApiError as exc:
+            log.warning("notes job failed %s: %s", lecture.id, exc.message)
+            progress.fail(exc.message)
+        except Exception as exc:  # pragma: no cover - defensive
+            log.exception("notes job crashed %s", lecture.id)
+            progress.fail(f"Не удалось собрать конспект: {exc}")
+
+    def _build_notes(
+        self,
+        lecture: Lecture,
+        segments: list[Segment],
+        progress: Progress,
+    ):
+        def on_progress(ratio: float, stage: str) -> None:
+            progress.update(stage, 84.0 + 13.0 * ratio, force=True)
+
+        return summarizer.build(
+            title="" if lecture.title_auto else lecture.title,
+            segments=segments,
+            duration_sec=float(lecture.duration_sec or 0.0),
+            mode=lecture.llm_mode,
+            on_progress=on_progress,
+        )
+
+    @staticmethod
+    def _store_notes(session, lecture: Lecture, notes) -> None:
+        session.execute(delete(Section).where(Section.lecture_id == lecture.id))
+        for index, draft in enumerate(notes.sections):
+            session.add(
+                Section(
+                    lecture_id=lecture.id,
+                    idx=index,
+                    title=draft.title[:300],
+                    summary=draft.summary or None,
+                    start_sec=draft.start_sec,
+                    end_sec=draft.end_sec,
+                    key_points=draft.key_points,
+                    details=draft.details or None,
+                )
+            )
+        lecture.summary = notes.summary
+        lecture.keywords = notes.keywords
+        lecture.questions = list(notes.questions or [])
+        lecture.llm_model = notes.model if notes.llm_used else None
+        lecture.llm_mode_used = notes.mode
+        lecture.subject = notes.category or "Другое"
+        lecture.topic = notes.subcategory or (
+            notes.sections[0].title if notes.sections else None
+        )
+        if lecture.title_auto and notes.title:
+            generated = notes.title.strip()
+            if len(generated) >= 3 and generated.lower() != lecture.title.strip().lower():
+                lecture.title = generated[:300]
+                log.info("generated title: %s", lecture.title)
+        session.commit()
 
     # -- optional LLM punctuation --------------------------------------
     def _punctuate(self, segments: list[Segment]) -> list[Segment]:

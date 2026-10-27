@@ -1834,3 +1834,217 @@ mark {
   .account-search { width: auto; flex: 1; }
   .account-sort { min-width: 142px; }
 }
+
+/* ---------- notes modes (api / local / offline) ---------- */
+.llm-mode-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.llm-mode-options .asr-option {
+  width: 100%;
+}
+
+.llm-mode-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  width: 100%;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--muted);
+  text-align: left;
+  transition: border-color 0.16s var(--ease), background 0.16s var(--ease);
+}
+
+.llm-mode-card:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.llm-mode-card.is-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: var(--accent-soft);
+}
+
+.llm-mode-card:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.llm-mode-card__icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.llm-mode-card.is-active .llm-mode-card__icon {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.llm-mode-card__text {
+  min-width: 0;
+  flex: 1;
+}
+
+.llm-mode-card__text strong,
+.llm-mode-card__text small {
+  display: block;
+}
+
+.llm-mode-card__text strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.llm-mode-card__text small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.llm-mode-card__status {
+  display: inline-block;
+  margin-top: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.llm-mode-card__status.is-ok {
+  color: var(--accent-2);
+}
+
+.llm-mode-card__status.is-off {
+  color: var(--danger, #d9534f);
+}
+
+.chip--tiny {
+  padding: 2px 7px;
+  font-size: 10px;
+  align-self: center;
+}
+
+/* ---------- self-check questions ---------- */
+.study-questions {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.study-questions li::marker {
+  color: var(--accent-2);
+  font-weight: 700;
+}
+
+/* ---------- outline with expandable details ---------- */
+.outline__item {
+  padding: 0;
+}
+
+.outline__head {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  text-align: left;
+  color: inherit;
+}
+
+.outline__details {
+  margin: 0 12px 11px 37px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+
+.outline__details > summary {
+  cursor: pointer;
+  color: var(--accent-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.outline__details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.outline__details > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.16s var(--ease);
+}
+
+.outline__details[open] > summary::before {
+  content: "▾ ";
+}
+
+.outline__details-body {
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ---------- lightweight markdown renderer ---------- */
+.rich-text > *:first-child {
+  margin-top: 0;
+}
+
+.rich-text > *:last-child {
+  margin-bottom: 0;
+}
+
+.rich-text p {
+  margin: 0 0 9px;
+}
+
+.rich-text h4,
+.rich-text h5 {
+  margin: 12px 0 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.rich-text ul,
+.rich-text ol {
+  margin: 0 0 9px;
+  padding-left: 19px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rich-text li::marker {
+  color: var(--accent);
+}
+
+.rich-text code,
+.rich-text .rt-formula {
+  padding: 1px 5px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.rich-text .rt-formula {
+  color: var(--accent-2);
+}

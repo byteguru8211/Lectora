@@ -1,5 +1,22 @@
 export type LectureStatus = "queued" | "processing" | "ready" | "failed";
 
+/** How the conspectus is generated. */
+export type LlmMode = "api" | "local" | "offline";
+
+export interface LlmModeInfo {
+  mode: LlmMode;
+  label: string;
+  description: string;
+  enabled: boolean;
+  available: boolean;
+  selectable: boolean;
+  model: string;
+  base_url: string;
+  detail?: string | null;
+  latency_ms?: number | null;
+  extra?: Record<string, unknown>;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -38,6 +55,8 @@ export interface LectureCard {
   search_hits: number;
   error_message: string | null;
   llm_model: string | null;
+  llm_mode: LlmMode;
+  llm_mode_used: LlmMode | null;
   keywords: string[];
   created_at: string | null;
   processed_at: string | null;
@@ -64,11 +83,13 @@ export interface Section {
   timestamp: string;
   duration_sec: number;
   key_points: string[];
+  details: string | null;
 }
 
 export interface LectureDetail extends LectureCard {
   summary: string | null;
   sections: Section[];
+  questions: string[];
   media_url: string;
   subtitles_url: string;
   updated_at: string | null;
@@ -138,6 +159,7 @@ export interface QaResponse {
   answer: QaMessage;
   question: QaMessage;
   llm_used: boolean;
+  llm_mode?: LlmMode;
 }
 
 export interface SearchSuggestion {
@@ -171,6 +193,21 @@ export interface HealthResponse {
 
 export interface SystemInfo {
   acceleration: { cuda: boolean; cuda_device: string | null; nvenc: boolean };
+  llm: {
+    enabled: boolean;
+    model: string;
+    base_url: string;
+    default_mode: LlmMode;
+    modes: Record<LlmMode, LlmModeInfo>;
+    labels: Record<LlmMode, string>;
+  };
+  llm_api?: {
+    enabled: boolean;
+    model: string;
+    base_url: string;
+    max_prompt_chars: number;
+    session_prefix: string;
+  };
 }
 
 export interface Stats {

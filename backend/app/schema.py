@@ -37,6 +37,11 @@ MIGRATIONS = (
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS visibility VARCHAR(16) NOT NULL DEFAULT 'private'",
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS share_token VARCHAR(64)",
     "CREATE UNIQUE INDEX IF NOT EXISTS ix_lectures_share_token ON lectures (share_token) WHERE share_token IS NOT NULL",
+    # 1.5.0: three notes modes (api / local / offline) and richer conspectus
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS llm_mode VARCHAR(16) NOT NULL DEFAULT 'local'",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS llm_mode_used VARCHAR(16)",
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS questions JSONB NOT NULL DEFAULT '[]'::jsonb",
+    "ALTER TABLE sections ADD COLUMN IF NOT EXISTS details TEXT",
 )
 
 

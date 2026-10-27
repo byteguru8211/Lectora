@@ -51,6 +51,9 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 
 # 2. запуск всего стека (PostgreSQL + локальная LLM + backend)
 powershell -ExecutionPolicy Bypass -File scripts\run.ps1
+
+# 3. опционально: DeepSeek API для самых подробных конспектов
+powershell -ExecutionPolicy Bypass -File scripts\start_api_llm.ps1
 ```
 
 Откройте <http://127.0.0.1:8000>. Остановить всё: `scripts\stop.ps1`.
@@ -58,6 +61,42 @@ powershell -ExecutionPolicy Bypass -File scripts\run.ps1
 **Первые 3–4 минуты после старта** идёт прогрев моделей (Vosk читает 3,4 ГБ модели).
 Интерфейс доступен сразу, но первая загрузка лекции будет ждать загрузку ASR-модели.
 Для защиты нажмите «Загрузить» через пару минут после `run.ps1`.
+
+### Три режима конспекта
+
+Транскрибация всегда остаётся локальной (Vosk или Whisper). Для конспекта, структуры,
+ключевых терминов и Q&A есть три режима; режим по умолчанию задаёт `LLM_MODE` в `.env`,
+а конкретное видео можно переключить в диалоге загрузки или кнопкой «Конспект» на
+странице лекции (расшифровка при этом не пересчитывается).
+
+| Режим | Что делает | Когда использовать |
+|---|---|---|
+| `api` | DeepSeek Web через локальный прокси `tools/FreeDeepseekAPI` | самый подробный конспект: 6–14 разделов, 180–300 слов обзора, 4–6 тезисов и markdown-конспект по каждому разделу, вопросы для самопроверки |
+| `local` | Qwen2.5-7B через llama.cpp на этом компьютере | без интернета, компактный конспект |
+| `offline` | экстрактивный алгоритм без ИИ | демо, отладка, аварийный режим — работает всегда |
+
+**Почему API-режим устроен осторожно.** FreeDeepseekAPI управляет обычным веб-аккаунтом
+DeepSeek, а не платным API: один ответ на чат, общие лимиты, возможные кулдауны. Поэтому
+Lectora:
+
+* выполняет запросы последовательно (`API_LLM_MAX_CONCURRENT=1`) с паузой
+  `API_LLM_MIN_INTERVAL_SEC` и ретраями на `429`/`5xx` с учётом `Retry-After`;
+* держит промпт ниже лимита прокси (`API_LLM_MAX_PROMPT_CHARS=42000` против
+  `DEEPSEEK_MAX_PROMPT_CHARS=80000` по умолчанию) и режет длинные лекции на окна;
+* изолирует каждый запрос одноразовым ключом сессии и сбрасывает чат после ответа —
+  лекции не смешиваются, а прокси не копит историю;
+* собирает конспект в четыре прохода: тезисы по фрагментам (для длинных записей) →
+  план разделов → подробные конспекты разделов → общий обзор, термины и вопросы.
+  Если API отвалился посреди работы, включается локальная модель, затем офлайн-алгоритм;
+  фактический режим виден в интерфейсе (`llm_mode_used`).
+
+Проверить доступность режимов и собрать конспект по уже обработанной лекции без
+пересчёта видео:
+
+```powershell
+.venv\Scripts\python.exe scripts\check_llm_modes.py
+.venv\Scripts\python.exe scripts\check_llm_modes.py --lecture-id <uuid> --mode api
+```
 
 ### Требования
 
@@ -131,7 +170,12 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
                                             ┌───────▼────────┐          ┌───────▼───────┐
                                             │ ffmpeg         │          │ llama-server  │
                                             │ аудио, превью  │          │ (127.0.0.1)   │
-                                            └────────────────┘          └───────────────┘
+                                            └────────────────┘          └───────┬───────┘
+                                                                                │
+                                                                   ┌────────────▼────────────┐
+                                                                   │ FreeDeepseekAPI :9655   │
+                                                                   │ DeepSeek Web (optional) │
+                                                                   └─────────────────────────┘
 ```
 
 ### Пайплайн обработки
@@ -140,6 +184,10 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
 чанки → эмбеддинги → конспект, структура и название → ready`
 
 * Для импорта по ссылке первая стадия — `download` (yt-dlp), затем обычный пайплайн.
+* Конспект выбирает один из трёх режимов (`api` / `local` / `offline`); API-режим добавляет
+  подстадии `notes_map → notes_outline → notes_details → notes_summary`.
+* Отдельная задача `kind=notes` пересобирает только конспект по сохранённому транскрипту —
+  режимы можно сравнивать без повторного распознавания.
 
 * Прогресс каждой стадии пишется в `lectures` и `jobs`; UI получает его через SSE.
 * Обработка идёт в отдельном потоке, HTTP-запрос возвращается сразу (202 Accepted).
@@ -170,6 +218,7 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
 | Эмбеддинги | sentence-transformers, BAAI/bge-m3 (1024d) |
 | Реранкер | BAAI/bge-reranker-v2-m3 |
 | LLM | Qwen2.5-7B-Instruct Q4_K_M, llama.cpp (Vulkan), OpenAI-совместимый API |
+| LLM API | DeepSeek Web через FreeDeepseekAPI (OpenAI Chat Completions, сессии, ретраи) |
 | Медиа | ffmpeg / ffprobe, WebVTT |
 
 ---
@@ -185,7 +234,14 @@ curl.exe -L -o tools\yt-dlp\yt-dlp.exe https://github.com/yt-dlp/yt-dlp/releases
 | `RERANKER_ENABLED` | `1` | включить реранкер |
 | `RERANKER_TOP_K` | `6` | сколько кандидатов пересортировывать |
 | `LLM_BASE_URL` | `http://127.0.0.1:8080/v1` | локальный llama-server |
-| `PUNCTUATION_MODE` | `rules` | `rules` — быстро, `llm` — редактура моделью |
+| `LLM_MODE` | `local` | режим конспекта по умолчанию: `api` / `local` / `offline` |
+| `API_LLM_BASE_URL` | `http://127.0.0.1:9655/v1` | FreeDeepseekAPI (DeepSeek Web) |
+| `API_LLM_MODEL` | `deepseek-v4-flash` | алиас модели в прокси |
+| `API_LLM_MAX_PROMPT_CHARS` | `42000` | предохранитель под лимит прокси |
+| `API_LLM_MAX_CONCURRENT` | `1` | одновременных запросов к веб-аккаунту |
+| `API_LLM_MIN_INTERVAL_SEC` | `3` | пауза между запросами |
+| `API_LLM_RETRY_ATTEMPTS` | `3` | попыток при 429/5xx |
+| `PUNCTUATION_MODE` | `rules` | `rules` — быстро, `llm` — редактура локальной моделью |
 | `WORKER_THREADS` | `1` | параллельных обработок (ASR тяжёлый) |
 | `MAX_UPLOAD_MB` | `4096` | лимит загрузки |
 
@@ -204,6 +260,7 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 | `POST` | `/api/lectures` | загрузка файла (multipart) |
 | `POST` | `/api/lectures/import` | импорт по ссылке |
 | `GET` | `/api/lectures/{id}` | карточка + конспект + структура |
+| `POST` | `/api/lectures/{id}/notes` | пересобрать конспект в другом режиме (без ASR) |
 | `GET` | `/api/lectures/{id}/transcript` | транскрипт с таймкодами |
 | `GET` | `/api/lectures/{id}/events` | SSE-прогресс обработки |
 | `GET` | `/api/lectures/{id}/media` | видео с поддержкой Range |
@@ -231,7 +288,8 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 backend/
   app/
     api/          REST-эндпоинты (lectures, search, qa, system)
-    services/     asr, media, embeddings, reranker, llm, summarizer, search, pipeline, jobs
+    services/     asr, media, embeddings, reranker, llm, llm_api, llm_modes,
+                  summarizer, search, pipeline, jobs
     utils/        текст, таймкоды
     models.py     схема БД
     config.py     настройки из .env
@@ -243,10 +301,10 @@ frontend/
     components/   плеер, таймлайн, транскрипт, панели, модалки
     pages/        библиотека, лекция, поиск
     styles/       дизайн-система (CSS-переменные)
-scripts/          setup / run / stop / start_server / smoke_pipeline
+scripts/          setup / run / stop / start_server / start_api_llm / check_llm_modes
 docs/             архитектура, API, сценарий демо, скриншоты
 models/           (не коммитится) веса моделей
-tools/            (не коммитится) ffmpeg, PostgreSQL, llama.cpp
+tools/            (не коммитится) ffmpeg, PostgreSQL, llama.cpp, FreeDeepseekAPI
 storage/          (не коммитится) загруженные видео, аудио, превью
 data/             (не коммитится) кластер PostgreSQL и логи
 ```
@@ -262,7 +320,9 @@ data/             (не коммитится) кластер PostgreSQL и ло�
 | Загрузка модели Vosk ru-0.42 | ~3 мин (один раз, затем тёплая) |
 | Транскрибация 7,5 мин лекции | ~2 мин (RTF ≈ 0,25) |
 | Эмбеддинги 10 чанков | ~1 с (после прогрева) |
-| Конспект + структура (LLM) | 20–30 с |
+| Конспект + структура (локальная LLM) | 20–30 с |
+| Конспект через DeepSeek API, 5-мин лекция | 30–45 с (6–8 разделов, ~5 КБ деталей) |
+| Конспект через DeepSeek API, 30-мин лекция | 1,5–3 мин (10–14 разделов) |
 | Поиск, первый запрос | ~3 с (холодный реранкер) |
 | Поиск, повторный запрос | ~20 мс (кэш реранка) |
 | Полная обработка 7,5 мин | ~4–6 мин (после прогрева) |
@@ -277,7 +337,14 @@ data/             (не коммитится) кластер PostgreSQL и ло�
   акустической модели, а не поиска; при необходимости можно добавить второй движок (GigaAM/Whisper).
 * Очередь рассчитана на один узел; для кластера достаточно вынести воркеры и заменить
   in-memory кэш эмбеддингов на pgvector.
-* Нет аутентификации — сервис рассчитан на локальный запуск/доверенную сеть.
+* DeepSeek API — это веб-аккаунт через неофициальный прокси: DeepSeek может изменить
+  контракт, а лимиты общие для всех клиентов аккаунта. Клиент изолирован интерфейсом
+  `OpenAiCompatClient`, поэтому переход на официальный API — это смена `API_LLM_BASE_URL`,
+  `API_LLM_MODEL` и `API_LLM_KEY`.
+* Аутентификация локальная (сессии Flask + роли), без OAuth и подтверждения e-mail; для
+  публикации нужен reverse-proxy с HTTPS и ограничением доступа.
+* Конспект в режиме API собирается последовательно (один веб-аккаунт): параллельная
+  обработка нескольких лекций в этом режиме выстроится в очередь.
 
 ---
 
@@ -285,4 +352,5 @@ data/             (не коммитится) кластер PostgreSQL и ло�
 
 MIT. Модели и инструменты распространяются под своими лицензиями (Vosk — Apache 2.0,
 bge-m3 — MIT, bge-reranker — Apache 2.0, Qwen2.5 — Apache 2.0, PostgreSQL — PostgreSQL License,
-ffmpeg — LGPL/GPL).
+ffmpeg — LGPL/GPL, FreeDeepseekAPI — MIT). DeepSeek Web используется через прокси и
+подчиняется условиям сервиса DeepSeek.

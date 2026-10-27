@@ -194,6 +194,7 @@ def _ask(session, lecture: Lecture):
         "question": {"id": now, "role": "user", "content": question, "citations": [], "grounded": True, "created_at": None},
         "answer": {"id": now + 1, "role": "assistant", "content": result.answer, "citations": result.citations, "grounded": result.grounded, "created_at": None},
         "llm_used": result.llm_used,
+        "llm_mode": result.mode,
     })
 
 

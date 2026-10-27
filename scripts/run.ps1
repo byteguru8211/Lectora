@@ -1,22 +1,54 @@
-﻿# Запуск всего стека Lectora: PostgreSQL + локальная LLM + backend.
+﻿# Запуск компонентов PowerShell явно в отдельном процессе.
+$ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-if (-not (Test-Path "frontend\dist\index.html")) {
-  Write-Host "Сборка фронтенда (первый запуск)…" -ForegroundColor Cyan
-  Push-Location frontend
-  & npm.cmd run build
-  Pop-Location
+function Invoke-ProjectScript([string]$Name) {
+  $path = Join-Path $PSScriptRoot $Name
+  & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path
+  if ($LASTEXITCODE -ne 0) {
+    throw "Project script $Name exited with code $LASTEXITCODE"
+  }
 }
 
-Write-Host "1/3 PostgreSQL" -ForegroundColor Cyan
-& powershell -ExecutionPolicy Bypass -File scripts\start_pg.ps1
+$distIndex = Join-Path $root "frontend\dist\index.html"
+if (-not (Test-Path $distIndex)) {
+  Write-Host "Сборка фронтенда (первый запуск)…" -ForegroundColor Cyan
+  Push-Location (Join-Path $root "frontend")
+  try {
+    if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) {
+      & pnpm.cmd run build
+    } else {
+      & npm.cmd run build
+    }
+    if ($LASTEXITCODE -ne 0) { throw "Сборка фронтенда завершилась ошибкой" }
+  } finally {
+    Pop-Location
+  }
+}
 
-Write-Host "`n2/3 Локальная LLM" -ForegroundColor Cyan
-& powershell -ExecutionPolicy Bypass -File scripts\start_llm.ps1
+Write-Host "1/4 PostgreSQL" -ForegroundColor Cyan
+Invoke-ProjectScript "start_pg.ps1"
 
-Write-Host "`n3/3 Backend" -ForegroundColor Cyan
-& powershell -ExecutionPolicy Bypass -File scripts\start_server.ps1
+Write-Host "`n2/4 Локальная LLM" -ForegroundColor Cyan
+Invoke-ProjectScript "start_llm.ps1"
+
+$authFile = Join-Path $root "tools\FreeDeepseekAPI\deepseek-auth.json"
+if (Test-Path $authFile) {
+  Write-Host "`n3/4 DeepSeek API (FreeDeepseekAPI, опционально)" -ForegroundColor Cyan
+  try {
+    Invoke-ProjectScript "start_api_llm.ps1"
+  } catch {
+    Write-Warning "DeepSeek API не запустился — режим API будет недоступен. $_"
+  }
+} else {
+  Write-Host "`n3/4 DeepSeek API пропущен: нет tools\FreeDeepseekAPI\deepseek-auth.json" -ForegroundColor DarkGray
+}
+
+Write-Host "`n4/4 Backend" -ForegroundColor Cyan
+Invoke-ProjectScript "start_server.ps1"
 
 Write-Host "`nLectora готова: http://127.0.0.1:8000" -ForegroundColor Green
-Start-Process "http://127.0.0.1:8000"
+Start-Process -FilePath "http://127.0.0.1:8000"
+
+

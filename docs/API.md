@@ -21,13 +21,16 @@
 
 ### `POST /lectures` (multipart)
 
-Поля: `file` (обязательно), `title`, `description`, `asr_profile` (`accurate` | `fast`).
+Поля: `file` (обязательно), `title`, `description`, `asr_profile` (`accurate` | `fast`),
+`asr_engine` (`vosk` | `whisper`), `use_gpu` (`true`/`false`), `llm_mode` (`api` | `local` |
+`offline`), `visibility` (`private` | `public`), `group_id`.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/api/lectures `
   -F "file=@videos_examples\пример_1.mp4" `
   -F "title=Геометрия: тела вращения" `
-  -F "asr_profile=accurate"
+  -F "asr_profile=accurate" `
+  -F "llm_mode=api"
 ```
 
 Ответ `202`:
@@ -39,7 +42,8 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 ### `POST /lectures/import`
 
 ```json
-{ "url": "https://www.youtube.com/watch?v=…", "title": "Необязательно", "asr_profile": "fast" }
+{ "url": "https://www.youtube.com/watch?v=…", "title": "Необязательно",
+  "asr_profile": "fast", "llm_mode": "api" }
 ```
 
 Требует `tools/yt-dlp/yt-dlp.exe`; иначе `501 ytdlp_missing`.
@@ -61,7 +65,21 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 
 ### `POST /lectures/{id}/reprocess`
 
-Перезапускает пайплайн. Можно сменить профиль: `{ "asr_profile": "fast" }`.
+Перезапускает пайплайн. Можно сменить профиль и режим конспекта:
+`{ "asr_profile": "fast", "llm_mode": "api" }`.
+
+### `POST /lectures/{id}/notes`
+
+Пересобирает только конспект по сохранённому транскрипту — ASR и индекс не затрагиваются.
+Ответ `202` с `job_id`; прогресс идёт через SSE, стадии `notes_*`.
+
+```json
+{ "llm_mode": "api" }
+```
+
+Режимы: `api` — DeepSeek Web (подробно, 6–14 разделов), `local` — локальная LLM,
+`offline` — без ИИ. Если выбранный бэкенд недоступен, сработает резервный; фактический
+режим вернётся в поле `llm_mode_used`.
 
 ### `GET /lectures/{id}/status`
 
@@ -84,10 +102,13 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 
 ```json
 { "summary": "…", "keywords": ["параллелепипед", "…"],
+  "questions": ["Что такое параллелепипед?", "…"],
   "sections": [ { "idx": 0, "title": "Прямоугольный параллелепипед",
                   "start_sec": 0, "end_sec": 42, "timestamp": "0:00",
-                  "summary": "…", "key_points": ["…"] } ],
-  "llm_model": "qwen2.5-7b-instruct" }
+                  "summary": "…", "key_points": ["…"],
+                  "details": "## Определение\n\nПодробный конспект раздела…" } ],
+  "llm_model": "deepseek-chat",
+  "llm_mode": "api", "llm_mode_used": "api" }
 ```
 
 ### `GET /lectures/{id}/events` (SSE)
@@ -153,6 +174,7 @@ data: {"status":"ready","progress":100,…}
 ```json
 {
   "llm_used": true,
+  "llm_mode": "api",
   "answer": {
     "role": "assistant",
     "content": "Прямоугольный параллелепипед — это…",
@@ -185,7 +207,9 @@ data: {"status":"ready","progress":100,…}
     "asr_models": { "ok": true, "profiles": { "accurate": true, "fast": true } },
     "embeddings": { "ok": true },
     "reranker": { "ok": true },
-    "llm": { "enabled": true, "available": true, "model": "qwen2.5-7b-instruct" },
+    "llm": { "enabled": true, "available": true, "model": "qwen2.5-7b-instruct", "mode": "local" },
+    "llm_api": { "enabled": true, "available": true, "model": "deepseek-chat", "mode": "api",
+                 "extra": { "ready_accounts": 1, "accounts": 1 } },
     "url_import": { "ok": false }
   },
   "took_ms": 12
@@ -206,4 +230,7 @@ data: {"status":"ready","progress":100,…}
 | `ffmpeg_missing` | 503 | не найден ffmpeg |
 | `ytdlp_missing` | 501 | импорт по ссылке недоступен |
 | `query_too_short` | 400 | запрос короче 2 символов |
+| `bad_llm_mode` | 400 | неизвестный режим конспекта |
+| `transcript_missing` | 409 | пересборка конспекта до расшифровки |
+| `worker_disabled` | 503 | фоновый воркер не запущен |
 | `internal_error` | 500 | непредвиденная ошибка (детали в логе) |

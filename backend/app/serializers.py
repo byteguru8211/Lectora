@@ -47,6 +47,8 @@ def lecture_card(lecture: Lecture) -> dict:
         "search_hits": lecture.search_hits,
         "error_message": lecture.error_message,
         "llm_model": lecture.llm_model,
+        "llm_mode": lecture.llm_mode,
+        "llm_mode_used": lecture.llm_mode_used,
         "keywords": list(lecture.keywords or [])[:6],
         "created_at": iso(lecture.created_at),
         "processed_at": iso(lecture.processed_at),
@@ -60,6 +62,7 @@ def lecture_detail(lecture: Lecture, sections: Iterable[Section] | None = None) 
         {
             "summary": lecture.summary,
             "keywords": list(lecture.keywords or []),
+            "questions": list(lecture.questions or []),
             "sections": [section_dict(section) for section in (sections or [])],
             "media_url": f"/api/lectures/{lecture.id}/media",
             "subtitles_url": f"/api/lectures/{lecture.id}/subtitles.vtt",
@@ -81,6 +84,7 @@ def section_dict(section: Section) -> dict:
         "timestamp": format_timestamp(section.start_sec),
         "duration_sec": round(max(0.0, section.end_sec - section.start_sec), 2),
         "key_points": list(section.key_points or []),
+        "details": section.details,
     }
 
 

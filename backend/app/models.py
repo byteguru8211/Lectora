@@ -92,6 +92,11 @@ class Lecture(Base):
     asr_engine: Mapped[str] = mapped_column(String(16), default="vosk")
     use_gpu: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Notes mode requested by the user (api/local/offline) and the one that
+    # actually produced the current conspectus after fallbacks.
+    llm_mode: Mapped[str] = mapped_column(String(16), default="local", nullable=False)
+    llm_mode_used: Mapped[str | None] = mapped_column(String(16))
+
     status: Mapped[str] = mapped_column(String(16), default="queued", index=True)
     stage: Mapped[str | None] = mapped_column(String(32))
     progress: Mapped[float] = mapped_column(Float, default=0.0)
@@ -104,6 +109,7 @@ class Lecture(Base):
 
     summary: Mapped[str | None] = mapped_column(Text)
     keywords: Mapped[list] = mapped_column(JSONB, default=list)
+    questions: Mapped[list] = mapped_column(JSONB, default=list)
     llm_model: Mapped[str | None] = mapped_column(String(120))
     processing_ms: Mapped[int | None] = mapped_column(Integer)
 
@@ -206,6 +212,7 @@ class Section(Base):
     start_sec: Mapped[float] = mapped_column(Float, nullable=False)
     end_sec: Mapped[float] = mapped_column(Float, nullable=False)
     key_points: Mapped[list] = mapped_column(JSONB, default=list)
+    details: Mapped[str | None] = mapped_column(Text)
 
     lecture: Mapped[Lecture] = relationship(back_populates="sections")
 

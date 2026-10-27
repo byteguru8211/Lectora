@@ -3,8 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, uploadLecture } from "../api/client";
 import { useToast } from "../context/ToastContext";
 import { formatBytes } from "../utils/format";
-import { CloseIcon, DownloadIcon, LinkIcon, SparkIcon, UploadIcon } from "./icons";
-import type { VideoGroup } from "../api/types";
+import { LLM_MODES, LLM_MODE_META, readStoredLlmMode, storeLlmMode } from "../utils/llm";
+import { CloseIcon, DownloadIcon, LinkIcon, SparkIcon, UploadIcon, BookIcon } from "./icons";
+import type { LlmMode, LlmModeInfo, VideoGroup } from "../api/types";
 
 interface Props {
   open: boolean;
@@ -25,6 +26,8 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
   const [description, setDescription] = useState("");
   const [profile, setProfile] = useState<"accurate" | "fast">("accurate");
   const [asrEngine, setAsrEngine] = useState<"vosk" | "whisper">("whisper");
+  const [llmMode, setLlmMode] = useState<LlmMode>(() => readStoredLlmMode("api"));
+  const [llmModes, setLlmModes] = useState<Record<LlmMode, LlmModeInfo> | null>(null);
   const [useGpu, setUseGpu] = useState(() => localStorage.getItem("lectora-use-gpu") !== "false");
   const [gpuStatus, setGpuStatus] = useState("Проверяем доступное ускорение…");
   const [visibility, setVisibility] = useState<"private" | "public">("private");
@@ -64,11 +67,15 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
 
   useEffect(() => {
     if (!open) return;
-    api.systemInfo().then(({ acceleration }) => {
+    api.systemInfo().then(({ acceleration, llm }) => {
       if (acceleration.cuda && acceleration.nvenc) setGpuStatus(`${acceleration.cuda_device ?? "NVIDIA GPU"}: CUDA и NVENC доступны`);
       else if (acceleration.nvenc) setGpuStatus("NVENC доступен; для CUDA нужна GPU-сборка PyTorch");
       else if (acceleration.cuda) setGpuStatus(`${acceleration.cuda_device ?? "CUDA"}: ускорение индекса доступно`);
       else setGpuStatus("GPU-ускорение не найдено — будет использован CPU");
+      if (llm?.modes) {
+        setLlmModes(llm.modes);
+        setLlmMode(readStoredLlmMode(llm.default_mode));
+      }
     }).catch(() => setGpuStatus("Не удалось проверить GPU — доступен автоматический откат на CPU"));
   }, [open]);
 
@@ -88,7 +95,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setProgress(0);
     try {
       const result = await uploadLecture(
-        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile, asrEngine, useGpu, visibility, groupId: groupId || undefined },
+        { file, title: title.trim() || undefined, description: description.trim() || undefined, asrProfile: profile, asrEngine, useGpu, visibility, groupId: groupId || undefined, llmMode },
         setProgress,
       );
       toast.success("Видео загружено, начинаем обработку");
@@ -111,7 +118,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile, useGpu, asrEngine, visibility, groupId || undefined);
+      const result = await api.importUrl(url.trim(), title.trim() || undefined, profile, useGpu, asrEngine, visibility, groupId || undefined, llmMode);
       toast.success("Ссылка принята, видео скачивается");
       onClose();
       navigate(`/lectures/${result.id}`);
@@ -125,6 +132,16 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
   };
 
   if (!open) return null;
+
+  const modeStatus = (value: LlmMode): string => {
+    const info = llmModes?.[value];
+    if (!info) return LLM_MODE_META[value].description;
+    if (!info.enabled) return "Отключено в настройках";
+    if (!info.available) return info.detail ? `Недоступно: ${info.detail}` : "Недоступно — сработает резервный режим";
+    if (value === "api") return `Готово · ${info.model} · ${info.extra?.ready_accounts ?? 1} аккаунт`;
+    if (value === "local") return `Готово · ${info.model}`;
+    return "Всегда доступно";
+  };
 
   return (
     <div className="modal-overlay" onMouseDown={(event) => event.target === event.currentTarget && !busy && onClose()}>
@@ -315,6 +332,41 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
               Точный режим медленнее примерно в 3 раза. Для демонстрации подойдёт быстрый.
             </p>
           </div>}
+
+          <div className="field">
+            <span className="field__label">Конспект и структура</span>
+            <div className="llm-mode-options">
+              {LLM_MODES.map((value) => {
+                const info = llmModes?.[value];
+                const Icon = value === "api" ? SparkIcon : value === "local" ? DownloadIcon : BookIcon;
+                return (
+                  <button
+                    key={value}
+                    className={`asr-option ${llmMode === value ? "is-active" : ""}`}
+                    onClick={() => {
+                      setLlmMode(value);
+                      storeLlmMode(value);
+                    }}
+                    disabled={busy || (info ? !info.selectable : false)}
+                    title={modeStatus(value)}
+                  >
+                    <Icon size={17} />
+                    <span>
+                      <strong>{LLM_MODE_META[value].label}</strong>
+                      <small>{modeStatus(value)}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="small muted">
+              {llmMode === "api"
+                ? "DeepSeek API даёт самый подробный конспект: больше разделов, тезисов и пояснений. Обычно 2–4 минуты."
+                : llmMode === "local"
+                  ? "Локальная модель работает без интернета, конспект компактнее."
+                  : "Офлайн-режим собирает конспект по правилам — мгновенно и всегда."}
+            </p>
+          </div>
 
           <label className={`gpu-option ${useGpu ? "is-active" : ""}`}>
             <span className="gpu-option__icon"><SparkIcon size={18} /></span>

@@ -95,6 +95,13 @@ class Config:
     RERANKER_ENABLED = _bool("RERANKER_ENABLED", True)
     RERANKER_TOP_K = _int("RERANKER_TOP_K", 6)
 
+    # --- LLM modes ----------------------------------------------------
+    # api | local | offline — the default for new lectures. Users can still
+    # pick another mode per lecture in the upload dialog.
+    LLM_DEFAULT_MODE = (
+        os.getenv("LLM_DEFAULT_MODE") or os.getenv("LLM_MODE") or "local"
+    ).strip().lower()
+
     # --- local LLM ----------------------------------------------------
     LLM_ENABLED = _bool("LLM_ENABLED", True)
     LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8080/v1").rstrip("/")
@@ -104,6 +111,35 @@ class Config:
     LLM_MAX_TOKENS = _int("LLM_MAX_TOKENS", 1400)
     LLM_TEMPERATURE = _float("LLM_TEMPERATURE", 0.2)
     LLM_CTX_WINDOW = _int("LLM_CTX_WINDOW", 8192)
+
+    # --- DeepSeek Web API (via tools/FreeDeepseekAPI) ------------------
+    # The proxy drives a personal DeepSeek account, so defaults are polite:
+    # one request at a time, a pause between calls and bounded prompt sizes.
+    API_LLM_ENABLED = _bool("API_LLM_ENABLED", True)
+    API_LLM_BASE_URL = os.getenv(
+        "API_LLM_BASE_URL", "http://127.0.0.1:9655/v1"
+    ).rstrip("/")
+    API_LLM_MODEL = os.getenv("API_LLM_MODEL", "deepseek-v4-flash")
+    API_LLM_KEY = os.getenv("API_LLM_KEY", "")
+    API_LLM_TIMEOUT = _float("API_LLM_TIMEOUT", 600.0)
+    API_LLM_MAX_TOKENS = _int("API_LLM_MAX_TOKENS", 8192)
+    API_LLM_TEMPERATURE = _float("API_LLM_TEMPERATURE", 0.3)
+    API_LLM_MAX_PROMPT_CHARS = _int("API_LLM_MAX_PROMPT_CHARS", 42000)
+    API_LLM_MAX_INPUT_CHARS = _int("API_LLM_MAX_INPUT_CHARS", 34000)
+    API_LLM_MAP_WINDOW_CHARS = _int("API_LLM_MAP_WINDOW_CHARS", 12000)
+    API_LLM_MAX_MAP_WINDOWS = _int("API_LLM_MAX_MAP_WINDOWS", 16)
+    API_LLM_DETAILS_BATCH_CHARS = _int("API_LLM_DETAILS_BATCH_CHARS", 9000)
+    API_LLM_MIN_INTERVAL_SEC = _float("API_LLM_MIN_INTERVAL_SEC", 3.0)
+    API_LLM_MAX_CONCURRENT = _int("API_LLM_MAX_CONCURRENT", 1)
+    API_LLM_RETRY_ATTEMPTS = _int("API_LLM_RETRY_ATTEMPTS", 3)
+    API_LLM_RETRY_BASE_SEC = _float("API_LLM_RETRY_BASE_SEC", 4.0)
+    API_LLM_RETRY_MAX_SEC = _float("API_LLM_RETRY_MAX_SEC", 90.0)
+    API_LLM_QUEUE_TIMEOUT_SEC = _float("API_LLM_QUEUE_TIMEOUT_SEC", 900.0)
+    API_LLM_SESSION_PREFIX = os.getenv("API_LLM_SESSION_PREFIX", "lectora")
+    API_LLM_RESET_SESSION = _bool("API_LLM_RESET_SESSION", True)
+    API_LLM_NOTES_MIN_SECTIONS = _int("API_LLM_NOTES_MIN_SECTIONS", 6)
+    API_LLM_NOTES_MAX_SECTIONS = _int("API_LLM_NOTES_MAX_SECTIONS", 14)
+    API_LLM_SUMMARY_MIN_WORDS = _int("API_LLM_SUMMARY_MIN_WORDS", 140)
 
     # --- tools --------------------------------------------------------
     TOOLS_DIR = _path("TOOLS_DIR", "tools")

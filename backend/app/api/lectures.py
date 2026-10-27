@@ -8,7 +8,15 @@ import mimetypes
 import time
 from pathlib import Path
 
-from flask import Blueprint, Response, g, jsonify, request, send_file, stream_with_context
+from flask import (
+    Blueprint,
+    Response,
+    g,
+    jsonify,
+    request,
+    send_file,
+    stream_with_context,
+)
 from sqlalchemy import func, update
 
 from ..config import Config
@@ -16,9 +24,10 @@ from ..errors import ApiError
 from ..extensions import db
 from ..models import Job, Lecture, Section, TranscriptSegment, VideoGroup
 from ..serializers import job_dict, lecture_card, lecture_detail, segment_dict
+from ..services.asr import AsrService
+from ..services.llm_modes import default_mode, normalize_mode
 from ..services.pipeline import STAGE_LABELS
 from ..services.search import search_service
-from ..services.asr import AsrService
 from ..services.storage import free_disk_gb
 from . import get_lecture_or_404, job_runner, storage
 
@@ -63,6 +72,18 @@ def _parse_visibility(raw: str | None) -> str:
     if value not in {"private", "public"}:
         raise ApiError("Некорректная видимость видео", 400, "bad_visibility")
     return value
+
+
+def _parse_llm_mode(raw: str | None, default: str | None = None) -> str:
+    """Validate the notes mode (``api`` | ``local`` | ``offline``)."""
+    try:
+        return normalize_mode(raw, default or default_mode())
+    except ValueError:
+        raise ApiError(
+            "Неизвестный режим генерации конспекта. Допустимы: api, local, offline.",
+            400,
+            "bad_llm_mode",
+        )
 
 
 def _parse_group(raw: str | None):
@@ -154,6 +175,7 @@ def create_lecture():
         asr_profile=_parse_profile(request.form.get("asr_profile")),
         asr_engine=_parse_engine(request.form.get("asr_engine")),
         use_gpu=(request.form.get("use_gpu", "false").strip().lower() in {"1", "true", "yes", "on"}),
+        llm_mode=_parse_llm_mode(request.form.get("llm_mode")),
         visibility=_parse_visibility(request.form.get("visibility")),
         group_id=_parse_group(request.form.get("group_id")),
         source_type="upload",
@@ -217,6 +239,7 @@ def import_lecture():
             asr_profile=_parse_profile(data.get("asr_profile")),
             asr_engine=_parse_engine(data.get("asr_engine")),
             use_gpu=bool(data.get("use_gpu", False)),
+            llm_mode=_parse_llm_mode(data.get("llm_mode")),
             visibility=_parse_visibility(data.get("visibility")),
             group_id=_parse_group(data.get("group_id")),
             source_type="url",
@@ -321,6 +344,8 @@ def reprocess(lecture_id: str):
             raise ApiError("Лекция уже обрабатывается", 409, "already_processing")
         if data.get("asr_profile"):
             lecture.asr_profile = _parse_profile(data["asr_profile"])
+        if data.get("llm_mode"):
+            lecture.llm_mode = _parse_llm_mode(data["llm_mode"])
         lecture.status = "queued"
         lecture.stage = "queued"
         lecture.progress = 0.0
@@ -329,6 +354,45 @@ def reprocess(lecture_id: str):
         job_id = _enqueue(lecture)
         payload = lecture_card(lecture)
         payload["job_id"] = job_id
+        return jsonify(payload), 202
+    finally:
+        session.close()
+
+
+@bp.post("/<lecture_id>/notes")
+def rebuild_notes(lecture_id: str):
+    """Regenerate only the conspectus with another LLM mode.
+
+    The transcript, semantic index and Q&A history stay untouched, so switching
+    between DeepSeek API, the local model and offline notes is cheap.
+    """
+    data = request.get_json(silent=True) or {}
+    session = db.session()
+    try:
+        lecture = get_lecture_or_404(session, lecture_id)
+        if lecture.status in ("queued", "processing"):
+            raise ApiError("Лекция уже обрабатывается", 409, "already_processing")
+        if not lecture.segment_count:
+            raise ApiError(
+                "Сначала нужна расшифровка — запустите полную обработку лекции.",
+                409,
+                "transcript_missing",
+            )
+        if data.get("llm_mode"):
+            lecture.llm_mode = _parse_llm_mode(data["llm_mode"])
+        lecture_uuid = lecture.id
+        mode = lecture.llm_mode
+        session.commit()
+        runner = job_runner()
+        if runner is None:
+            raise ApiError("Фоновая обработка не запущена", 503, "worker_disabled")
+        job_id = runner.enqueue(lecture_uuid, kind="notes")
+        # enqueue() reuses the scoped session and closes it, so re-read the row
+        # instead of refreshing a now-detached instance.
+        fresh = session.get(Lecture, lecture_uuid) or lecture
+        payload = lecture_card(fresh)
+        payload["job_id"] = job_id
+        log.info("notes regeneration queued for %s (mode=%s)", lecture_uuid, mode)
         return jsonify(payload), 202
     finally:
         session.close()
@@ -374,8 +438,11 @@ def structure(lecture_id: str):
             {
                 "summary": lecture.summary,
                 "keywords": list(lecture.keywords or []),
+                "questions": list(lecture.questions or []),
                 "sections": [section_dict(row) for row in sections],
                 "llm_model": lecture.llm_model,
+                "llm_mode": lecture.llm_mode,
+                "llm_mode_used": lecture.llm_mode_used,
             }
         )
     finally:
