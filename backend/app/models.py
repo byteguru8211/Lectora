@@ -93,8 +93,8 @@ class Lecture(Base):
     asr_engine: Mapped[str] = mapped_column(String(16), default="vosk")
     use_gpu: Mapped[bool] = mapped_column(Boolean, default=False)
 
-    # Notes mode requested by the user (api/local/offline) and the one that
-    # actually produced the current conspectus after fallbacks.
+    # Notes mode requested by the user (api/local) and the one that actually
+    # produced the current conspectus after fallbacks (may be ``offline``).
     llm_mode: Mapped[str] = mapped_column(String(16), default="local", nullable=False)
     llm_mode_used: Mapped[str | None] = mapped_column(String(16))
 

@@ -8,8 +8,8 @@ Three strategies, one contract (``StudyNotes``):
   is rate-limited and isolated by :mod:`app.services.llm_api`.
 * **local** — the llama.cpp model on this machine, one reduce call that fits
   its small context window.
-* **offline** — deterministic sentence scoring + time buckets, so the outline,
-  abstract and self-check questions exist even with no model at all.
+* **offline fallback** — deterministic sentence scoring + time buckets, used
+  only when neither model works (marked as ``offline`` in the output).
 
 All three return validated data: timestamps are ordered and bounded, empty
 sections are dropped, and a failed model call degrades to the next strategy
@@ -140,9 +140,6 @@ class Summarizer:
 
         requested = self._safe_mode(mode)
         fallback = self._extractive(title=title, segments=segments, duration=duration_sec)
-        if requested == MODE_OFFLINE:
-            log.info("summariser: offline mode, extractive notes")
-            return fallback
 
         resolved, client = resolve_client(requested)
         if client is None:

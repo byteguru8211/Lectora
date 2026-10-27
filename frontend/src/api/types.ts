@@ -1,7 +1,10 @@
 export type LectureStatus = "queued" | "processing" | "ready" | "failed";
 
-/** How the conspectus is generated. */
-export type LlmMode = "api" | "local" | "offline";
+/** How the conspectus is generated (user-selectable). */
+export type LlmMode = "api" | "local";
+
+/** The mode that actually produced notes; `offline` marks the extractive fallback. */
+export type NotesModeUsed = LlmMode | "offline";
 
 export interface LlmModeInfo {
   mode: LlmMode;
@@ -55,8 +58,8 @@ export interface LectureCard {
   search_hits: number;
   error_message: string | null;
   llm_model: string | null;
-  llm_mode: LlmMode;
-  llm_mode_used: LlmMode | null;
+  llm_mode: NotesModeUsed;
+  llm_mode_used: NotesModeUsed | null;
   keywords: string[];
   created_at: string | null;
   processed_at: string | null;

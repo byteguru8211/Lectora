@@ -1852,7 +1852,7 @@ mark {
   .account-sort { min-width: 142px; }
 }
 
-/* ---------- notes modes (api / local / offline) ---------- */
+/* ---------- notes modes (api / local) ---------- */
 .llm-mode-options {
   display: flex;
   flex-direction: column;

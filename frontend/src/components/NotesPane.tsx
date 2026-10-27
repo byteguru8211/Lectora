@@ -1,4 +1,4 @@
-import type { LlmMode, Section } from "../api/types";
+import type { NotesModeUsed, Section } from "../api/types";
 import { llmModeLabel } from "../utils/llm";
 import { BookIcon, ChatIcon, SparkIcon } from "./icons";
 import { RichText } from "./RichText";
@@ -10,8 +10,8 @@ interface Props {
   questions: string[];
   currentTime: number;
   onSeek: (seconds: number) => void;
-  requestedMode?: LlmMode;
-  usedMode?: LlmMode | null;
+  requestedMode?: NotesModeUsed;
+  usedMode?: NotesModeUsed | null;
   llmModel?: string | null;
 }
 

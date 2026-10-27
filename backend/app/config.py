@@ -96,8 +96,9 @@ class Config:
     RERANKER_TOP_K = _int("RERANKER_TOP_K", 6)
 
     # --- LLM modes ----------------------------------------------------
-    # api | local | offline — the default for new lectures. Users can still
-    # pick another mode per lecture in the upload dialog.
+    # api | local — the default for new lectures. Users can still pick another
+    # mode per lecture in the upload dialog. If both models are down, notes
+    # fall back to deterministic extractive text (not a selectable mode).
     LLM_DEFAULT_MODE = (
         os.getenv("LLM_DEFAULT_MODE") or os.getenv("LLM_MODE") or "local"
     ).strip().lower()

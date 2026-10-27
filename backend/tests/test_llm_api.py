@@ -239,20 +239,44 @@ def test_health_falls_back_to_models_when_health_is_missing():
 # ---------------------------------------------------------------- modes
 def test_normalize_mode_aliases():
     assert normalize_mode("api") == MODE_API
-    assert normalize_mode("extractive") == MODE_OFFLINE
     assert normalize_mode("qwen") == MODE_LOCAL
     assert normalize_mode(None, "api") == MODE_API
+    # Extractive notes are an automatic fallback, not a selectable mode.
+    with pytest.raises(ValueError):
+        normalize_mode("offline")
+    with pytest.raises(ValueError):
+        normalize_mode("extractive")
     with pytest.raises(ValueError):
         normalize_mode("gpt-5")
+
+
+def test_offline_is_not_advertised_as_a_mode():
+    import app.services.llm_modes as modes
+
+    assert MODE_OFFLINE not in modes.ALL_MODES
+    assert set(modes.MODE_LABELS) == {MODE_API, MODE_LOCAL}
+    assert set(modes.MODE_DESCRIPTIONS) == {MODE_API, MODE_LOCAL}
 
 
 def test_fallback_chains_never_send_local_lectures_to_cloud():
     assert fallback_chain(MODE_API) == [MODE_API, MODE_LOCAL, MODE_OFFLINE]
     assert fallback_chain(MODE_LOCAL) == [MODE_LOCAL, MODE_OFFLINE]
-    assert fallback_chain(MODE_OFFLINE) == [MODE_OFFLINE]
 
 
 def test_resolve_client_falls_back_to_local_when_api_is_down(monkeypatch):
+    import app.services.llm_modes as modes
+
+    class FakeClient:
+        def __init__(self, available):
+            self.available = available
+
+    local = FakeClient(False)
+    api = FakeClient(False)
+    monkeypatch.setattr(modes, "client_for", lambda mode: {MODE_API: api, MODE_LOCAL: local}.get(mode))
+    assert modes.resolve_client(MODE_LOCAL) == (MODE_OFFLINE, None)
+
+
+def test_resolve_client_falls_back_from_api_to_local(monkeypatch):
     import app.services.llm_modes as modes
 
     class FakeClient:
@@ -263,7 +287,6 @@ def test_resolve_client_falls_back_to_local_when_api_is_down(monkeypatch):
     api = FakeClient(False)
     monkeypatch.setattr(modes, "client_for", lambda mode: {MODE_API: api, MODE_LOCAL: local}.get(mode))
     assert modes.resolve_client(MODE_API) == (MODE_LOCAL, local)
-    assert modes.resolve_client(MODE_OFFLINE) == (MODE_OFFLINE, None)
 
 
 # ---------------------------------------------------------------- summarizer

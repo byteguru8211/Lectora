@@ -1,15 +1,17 @@
-"""Three ways to produce notes and answers, behind one selector.
+"""Two ways to produce notes and answers, behind one selector.
 
 ``api``
     DeepSeek Web through the FreeDeepseekAPI proxy — the most detailed output.
 ``local``
     The llama.cpp model on this machine — no network.
-``offline``
-    No model at all — deterministic extractive notes (always available).
 
-Fallbacks are intentionally conservative: choosing ``local`` or ``offline``
-never silently sends the lecture to a cloud account; only ``api`` may degrade
-to the local model, and then to extractive notes.
+When neither backend works, both degrade to deterministic extractive notes:
+no model at all, but the lecture still gets an outline and timestamps.  That
+fallback is not selectable — it only marks output the user did not ask for.
+
+Fallbacks are intentionally conservative: choosing ``local`` never silently
+sends the lecture to a cloud account; only ``api`` may degrade to the local
+model, and then to extractive notes.
 """
 
 from __future__ import annotations
@@ -27,18 +29,16 @@ MODE_API = "api"
 MODE_LOCAL = "local"
 MODE_OFFLINE = "offline"
 
-ALL_MODES: tuple[str, ...] = (MODE_API, MODE_LOCAL, MODE_OFFLINE)
+ALL_MODES: tuple[str, ...] = (MODE_API, MODE_LOCAL)
 
 MODE_LABELS = {
     MODE_API: "DeepSeek API",
     MODE_LOCAL: "Локальная модель",
-    MODE_OFFLINE: "Офлайн (без ИИ)",
 }
 
 MODE_DESCRIPTIONS = {
     MODE_API: "Подробный конспект через DeepSeek Web: больше разделов, тезисов и деталей.",
     MODE_LOCAL: "Модель Qwen на этом компьютере: без интернета, быстрее и компактнее.",
-    MODE_OFFLINE: "Без ИИ: структурный конспект по правилам, работает всегда.",
 }
 
 _ALIASES = {
@@ -53,11 +53,6 @@ _ALIASES = {
     "local-llm": MODE_LOCAL,
     "llm": MODE_LOCAL,
     "qwen": MODE_LOCAL,
-    "extractive": MODE_OFFLINE,
-    "rules": MODE_OFFLINE,
-    "none": MODE_OFFLINE,
-    "off": MODE_OFFLINE,
-    "no-llm": MODE_OFFLINE,
 }
 
 
@@ -144,8 +139,7 @@ def describe_modes(*, probe: bool = True) -> dict:
         payload.update(
             label=MODE_LABELS[mode],
             description=MODE_DESCRIPTIONS[mode],
-            selectable=bool(health.enabled and health.available)
-            or mode == MODE_OFFLINE,
+            selectable=bool(health.enabled and health.available),
         )
         modes[mode] = payload
     return {"default": default_mode(), "modes": modes}

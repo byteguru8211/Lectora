@@ -75,12 +75,12 @@ def _parse_visibility(raw: str | None) -> str:
 
 
 def _parse_llm_mode(raw: str | None, default: str | None = None) -> str:
-    """Validate the notes mode (``api`` | ``local`` | ``offline``)."""
+    """Validate the notes mode (``api`` | ``local``)."""
     try:
         return normalize_mode(raw, default or default_mode())
     except ValueError:
         raise ApiError(
-            "Неизвестный режим генерации конспекта. Допустимы: api, local, offline.",
+            "Неизвестный режим генерации конспекта. Допустимы: api, local.",
             400,
             "bad_llm_mode",
         )
@@ -381,7 +381,7 @@ def rebuild_notes(lecture_id: str):
     """Regenerate only the conspectus with another LLM mode.
 
     The transcript, semantic index and Q&A history stay untouched, so switching
-    between DeepSeek API, the local model and offline notes is cheap.
+    between DeepSeek API and the local model is cheap.
     """
     data = request.get_json(silent=True) or {}
     session = db.session()

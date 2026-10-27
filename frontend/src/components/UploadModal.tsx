@@ -139,8 +139,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     if (!info.enabled) return "Отключено в настройках";
     if (!info.available) return info.detail ? `Недоступно: ${info.detail}` : "Недоступно — сработает резервный режим";
     if (value === "api") return `Готово · ${info.model} · ${info.extra?.ready_accounts ?? 1} аккаунт`;
-    if (value === "local") return `Готово · ${info.model}`;
-    return "Всегда доступно";
+    return `Готово · ${info.model}`;
   };
 
   return (
@@ -362,9 +361,7 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
             <p className="small muted">
               {llmMode === "api"
                 ? "DeepSeek API даёт самый подробный конспект: больше разделов, тезисов и пояснений. Обычно 2–4 минуты."
-                : llmMode === "local"
-                  ? "Локальная модель работает без интернета, конспект компактнее."
-                  : "Офлайн-режим собирает конспект по правилам — мгновенно и всегда."}
+                : "Локальная модель работает без интернета, конспект компактнее."}
             </p>
           </div>
 

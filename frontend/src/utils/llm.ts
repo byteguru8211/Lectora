@@ -1,7 +1,7 @@
-import type { LlmMode } from "../api/types";
+import type { LlmMode, NotesModeUsed } from "../api/types";
 
-/** UI copy and ordering for the three notes modes. */
-export const LLM_MODES: LlmMode[] = ["api", "local", "offline"];
+/** UI copy and ordering for the two selectable notes modes. */
+export const LLM_MODES: LlmMode[] = ["api", "local"];
 
 export const LLM_MODE_META: Record<LlmMode, { label: string; short: string; description: string }> = {
   api: {
@@ -14,17 +14,12 @@ export const LLM_MODE_META: Record<LlmMode, { label: string; short: string; desc
     short: "Локально",
     description: "Qwen на этом компьютере: без интернета, компактнее и быстрее.",
   },
-  offline: {
-    label: "Офлайн (без ИИ)",
-    short: "Офлайн",
-    description: "Структурный конспект по правилам — работает всегда.",
-  },
 };
 
 const STORAGE_KEY = "lectora-llm-mode";
 
 export function isLlmMode(value: unknown): value is LlmMode {
-  return value === "api" || value === "local" || value === "offline";
+  return value === "api" || value === "local";
 }
 
 export function readStoredLlmMode(fallback: LlmMode = "api"): LlmMode {
@@ -44,7 +39,8 @@ export function storeLlmMode(mode: LlmMode): void {
   }
 }
 
-export function llmModeLabel(mode: LlmMode | null | undefined, styles: "full" | "short" = "full"): string {
+export function llmModeLabel(mode: NotesModeUsed | null | undefined, styles: "full" | "short" = "full"): string {
   if (!mode) return "—";
+  if (mode === "offline") return styles === "short" ? "Фолбэк" : "Без ИИ (аварийный фолбэк)";
   return styles === "short" ? LLM_MODE_META[mode].short : LLM_MODE_META[mode].label;
 }

@@ -37,8 +37,8 @@
 ### `POST /lectures` (multipart)
 
 Поля: `file` (обязательно), `title`, `description`, `asr_profile` (`accurate` | `fast`),
-`asr_engine` (`vosk` | `whisper`), `use_gpu` (`true`/`false`), `llm_mode` (`api` | `local` |
-`offline`), `visibility` (`private` | `public`), `group_id`.
+`asr_engine` (`vosk` | `whisper`), `use_gpu` (`true`/`false`), `llm_mode` (`api` | `local`),
+`visibility` (`private` | `public`), `group_id`.
 
 ```powershell
 curl.exe -X POST http://127.0.0.1:8000/api/lectures `
@@ -92,9 +92,10 @@ curl.exe -X POST http://127.0.0.1:8000/api/lectures `
 { "llm_mode": "api" }
 ```
 
-Режимы: `api` — DeepSeek Web (подробно, 6–14 разделов), `local` — локальная LLM,
-`offline` — без ИИ. Если выбранный бэкенд недоступен, сработает резервный; фактический
-режим вернётся в поле `llm_mode_used`.
+Режимы: `api` — DeepSeek Web (подробно, 6–14 разделов), `local` — локальная LLM.
+Если выбранный бэкенд недоступен, сработает резервный, а в крайнем случае — экстрактивный
+алгоритм без модели; фактический режим вернётся в поле `llm_mode_used` (может быть
+`offline` — маркер аварийного фолбэка).
 
 ### `GET /lectures/{id}/status`
 

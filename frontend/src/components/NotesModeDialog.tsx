@@ -1,25 +1,25 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { LlmMode, LlmModeInfo } from "../api/types";
+import type { LlmMode, LlmModeInfo, NotesModeUsed } from "../api/types";
 import { LLM_MODES, LLM_MODE_META, isLlmMode } from "../utils/llm";
 import { CloseIcon, SparkIcon } from "./icons";
 
 interface Props {
   open: boolean;
-  initialMode: LlmMode;
-  usedMode: LlmMode | null;
+  initialMode: NotesModeUsed;
+  usedMode: NotesModeUsed | null;
   busy?: boolean;
   onSubmit: (mode: LlmMode) => void;
   onClose: () => void;
 }
 
 export function NotesModeDialog({ open, initialMode, usedMode, busy = false, onSubmit, onClose }: Props) {
-  const [mode, setMode] = useState<LlmMode>(initialMode);
+  const [mode, setMode] = useState<LlmMode>(() => (isLlmMode(initialMode) ? initialMode : "api"));
   const [modes, setModes] = useState<Record<LlmMode, LlmModeInfo> | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setMode(initialMode);
+    setMode(isLlmMode(initialMode) ? initialMode : "api");
   }, [open, initialMode]);
 
   useEffect(() => {
@@ -27,7 +27,7 @@ export function NotesModeDialog({ open, initialMode, usedMode, busy = false, onS
     api.systemInfo().then((info) => {
       const next = info.llm?.modes ?? null;
       setModes(next);
-      const current = next?.[initialMode];
+      const current = next && isLlmMode(initialMode) ? next[initialMode] : null;
       if (current && !current.selectable) {
         const fallback = LLM_MODES.find((value) => next?.[value]?.selectable);
         if (fallback) setMode(fallback);
@@ -109,9 +109,7 @@ export function NotesModeDialog({ open, initialMode, usedMode, busy = false, onS
           <p className="small muted" style={{ marginTop: 12 }}>
             {mode === "api"
               ? "DeepSeek собирает конспект по частям: обычно 2–4 минуты. Прогресс виден на странице лекции."
-              : mode === "local"
-                ? "Локальная модель отвечает быстрее, но конспект компактнее."
-                : "Офлайн-конспект собирается за пару секунд по правилам без ИИ."}
+              : "Локальная модель отвечает быстрее, но конспект компактнее."}
           </p>
         </div>
 
