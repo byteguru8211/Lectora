@@ -19,11 +19,20 @@ Start-Process -FilePath $python `
   -RedirectStandardOutput (Join-Path $logs "server.out.log") `
   -RedirectStandardError (Join-Path $logs "server.err.log")
 
-Start-Sleep -Seconds 6
-try {
-  $health = Invoke-RestMethod "http://127.0.0.1:8000/api/health" -TimeoutSec 20
-  Write-Host "Lectora: $($health.status)  (база: $($health.checks.database.ok), LLM: $($health.checks.llm.available))"
-  Write-Host "Откройте http://127.0.0.1:8000"
-} catch {
-  Write-Error "Сервер не ответил. Смотрите data\logs\server.err.log"
+Start-Sleep -Seconds 3
+$healthy = $false
+for ($i = 0; $i -lt 15; $i++) {
+  try {
+    $health = Invoke-RestMethod "http://127.0.0.1:8000/api/health" -TimeoutSec 5
+    Write-Host "Lectora: $($health.status)  (база: $($health.checks.database.ok), LLM: $($health.checks.llm.available))"
+    Write-Host "Откройте http://127.0.0.1:8000"
+    $healthy = $true
+    break
+  } catch {
+    Start-Sleep -Seconds 2
+  }
+}
+if (-not $healthy) {
+  Write-Error "Сервер не ответил за 33 секунды. Смотрите data\logs\server.err.log"
+  exit 1
 }

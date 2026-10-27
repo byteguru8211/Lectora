@@ -9,6 +9,10 @@ if (-not (Test-Path (Join-Path $bin "pg_ctl.exe"))) {
   Write-Error "PostgreSQL не найден: tools\pgsql. См. README, раздел «Установка»."
   exit 1
 }
+if (-not (Test-Path (Join-Path $data "PG_VERSION"))) {
+  Write-Error "Кластер PostgreSQL не инициализирован: $data. Запустите scripts\setup.ps1."
+  exit 1
+}
 
 & (Join-Path $bin "pg_isready.exe") -h 127.0.0.1 -p 5433 | Out-Null
 if ($LASTEXITCODE -eq 0) {
@@ -22,6 +26,13 @@ Start-Process -FilePath (Join-Path $bin "postgres.exe") `
   -RedirectStandardOutput (Join-Path $logs "pg.out.log") `
   -RedirectStandardError (Join-Path $logs "pg.err.log")
 
-Start-Sleep -Seconds 4
-& (Join-Path $bin "pg_isready.exe") -h 127.0.0.1 -p 5433
-if ($LASTEXITCODE -eq 0) { Write-Host "PostgreSQL готов" } else { Write-Error "PostgreSQL не стартовал, см. data\logs\pg.err.log" }
+for ($i = 0; $i -lt 10; $i++) {
+  Start-Sleep -Seconds 2
+  & (Join-Path $bin "pg_isready.exe") -h 127.0.0.1 -p 5433 | Out-Null
+  if ($LASTEXITCODE -eq 0) {
+    Write-Host "PostgreSQL готов"
+    exit 0
+  }
+}
+Write-Error "PostgreSQL не стартовал, см. data\logs\pg.err.log"
+exit 1

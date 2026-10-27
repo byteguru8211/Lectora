@@ -1,11 +1,26 @@
 # API
 
-Базовый адрес: `http://127.0.0.1:8000/api`. Формат — JSON UTF-8. Аутентификации нет
-(локальный запуск). Ошибки приходят в едином конверте:
+Базовый адрес: `http://127.0.0.1:8000/api`. Формат — JSON UTF-8. Ошибки приходят в едином
+конверте:
 
 ```json
 { "error": { "code": "lecture_not_found", "message": "Лекция не найдена" } }
 ```
+
+## Аутентификация
+
+Сессия в подписанной cookie (`HttpOnly`, `SameSite=Lax`). Регистрация и вход сразу
+устанавливают cookie, поэтому `curl` должен сохранять её (`-c cookies.txt -b cookies.txt`).
+
+| Метод | Путь | Тело | Ответ |
+|---|---|---|---|
+| `POST` | `/auth/register` | `{ "name", "email", "password", "role": "student" \| "teacher" }` | `201 { "user": { … } }` |
+| `POST` | `/auth/login` | `{ "email", "password" }` | `200 { "user": { … } }` |
+| `POST` | `/auth/logout` | — | `204` |
+| `GET` | `/auth/me` | — | `200 { "user": { … } }` |
+
+`/lectures*`, `/groups*`, `/recommendations` и `/stats` требуют входа; публичные маршруты
+`/public/*` и `/shared/*` доступны гостям.
 
 ## Лекции
 
@@ -135,25 +150,41 @@ data: {"status":"ready","progress":100,…}
 
 ```json
 {
-  "query": "формула объёма конуса",
+  "query": "C++ указатели",
   "scope": "course",
-  "took_ms": 1893,
+  "took_ms": 2490,
   "reranked": true,
-  "candidates": 10,
+  "candidates": 8,
   "results": [
     {
       "chunk_id": 7,
-      "lecture": { "id": "…", "title": "пример_1" },
+      "lecture": { "id": "…", "title": "Функторы в C++" },
       "start_sec": 272.4, "end_sec": 310.1, "timestamp": "4:32",
-      "snippet": "…объём конуса…",
-      "spans": [ { "start": 42, "end": 55 } ],
-      "scores": { "dense": 0.71, "lexical": 0.32, "fused": 1.04, "rerank": 0.99, "final": 0.99 }
+      "snippet": "…в C++ указатель…",
+      "spans": [ { "start": 2, "end": 5 } ],
+      "scores": {
+        "dense": 0.52, "lexical": 0.0, "exact": 1.0,
+        "fused": 0.72, "rerank": 0.37, "final": 0.72
+      }
     }
   ]
 }
 ```
 
-`spans` — диапазоны для подсветки в исходном `snippet`.
+`scores`:
+
+| Поле | Значение |
+|---|---|
+| `dense` | сырая косинусная близость bge-m3 |
+| `lexical` | `ts_rank_cd` полнотекстового поиска (для запроса без обычных слов — `0`) |
+| `exact` | покрытие технических терминов (`C++`, `C#`, `.NET`) с учётом IDF и названия лекции; есть только если в запросе был такой термин |
+| `fused` | итог гибридного ранжирования до реранка |
+| `rerank` | вероятность bge-reranker (если реранкер доступен) |
+| `final` | итоговая релевантность: `fused`, скорректированный реранком и отсечённый порогом |
+
+`spans` — диапазоны для подсветки в исходном `snippet`. Технические термины подсвечиваются
+целиком (`C++`, а не буква «c»). Если ни один фрагмент не прошёл порог релевантности,
+`results` пустой — поиск не подменяет ответ «первыми попавшимися» лекциями.
 
 ### `GET /search/suggest?q=…`
 
@@ -185,6 +216,74 @@ data: {"status":"ready","progress":100,…}
   },
   "question": { "role": "user", "content": "…" }
 }
+```
+
+## Публичная библиотека и группы
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `GET` | `/groups` | группы пользователя со счётчиком видео |
+| `POST` | `/groups` | создать группу (`name`, `description`, `visibility`) |
+| `PATCH` | `/groups/{id}` | переименовать или сменить видимость |
+| `POST` | `/groups/{id}/share` | выпустить токен приватной ссылки |
+| `POST` | `/lectures/{id}/share` | выпустить токен ссылки на лекцию |
+| `GET` | `/public/lectures` | каталог: публичные лекции и лекции публичных групп |
+| `GET` | `/public/lectures/{id}` | карточка, конспект и структура публичной лекции |
+| `GET` | `/public/lectures/{id}/media` | видео с поддержкой Range |
+| `GET` | `/public/lectures/{id}/transcript` | транскрипт с таймкодами |
+| `GET` | `/public/lectures/{id}/search?q=…` | поиск внутри лекции |
+| `POST` | `/public/lectures/{id}/qa` | вопрос по лекции |
+| `GET` | `/shared/videos/{token}` | лекция по приватной ссылке |
+| `GET` | `/shared/groups/{token}` | группа по приватной ссылке |
+
+Каталог: `{ "items": [ { "id": "…", "title": "…", "owner_name": "…", "group_name": "…",
+"thumbnail_url": "/api/public/lectures/{id}/thumbnail", … } ] }`.
+
+## Рекомендации
+
+### `GET /recommendations?limit=12`
+
+Персональная лента «Для Вас». Профиль строится из готовых лекций пользователя (сильный
+сигнал) и первых просмотров публичных видео (слабый сигнал). Свои лекции в выдачу не
+попадают; `limit` — 1–30.
+
+```json
+{
+  "mode": "personalized",
+  "fallback": false,
+  "interests": [
+    { "label": "Программирование на C++", "kind": "subject", "weight": 5.0 },
+    { "label": "Функторы в C++", "kind": "topic", "weight": 3.5 }
+  ],
+  "items": [
+    {
+      "id": "…", "title": "Продвинутые функторы C++", "owner_name": "…",
+      "thumbnail_url": "/api/public/lectures/…/thumbnail",
+      "recommendation": {
+        "score": 1.0,
+        "reason": "Темы: «Программирование на C++», «Функторы в C++»",
+        "matched_topics": ["Программирование на C++", "Функторы в C++"],
+        "personalized": true
+      }
+    }
+  ],
+  "generated_at": "2026-10-27T18:37:10Z"
+}
+```
+
+`mode`: `personalized` — есть совпадения по интересам; `trending` — профиль есть, но
+совпадений нет; `cold_start` — сигналов ещё нет, лента собрана по популярности и свежести.
+В `trending`/`cold_start` карточки приходят с `personalized: false`. Если совпадений
+меньше четырёх, лента добирается популярными видео с пометкой «Популярное на платформе».
+
+### `POST /public/lectures/{id}/view`
+
+Счётчик просмотров. Гость увеличивает `view_count` и получает `tracked: false`;
+авторизованный пользователь дополнительно попадает в `lecture_views`, а при первом
+просмотре пересобирается его профиль интересов.
+
+```json
+{ "tracked": true, "view_count": 12, "first_view": true }
 ```
 
 ## Служебные
@@ -220,6 +319,9 @@ data: {"status":"ready","progress":100,…}
 
 | Код | HTTP | Когда |
 |---|---|---|
+| `authentication_required` | 401 | нет активной сессии |
+| `invalid_credentials` | 401 | неверный email или пароль |
+| `email_exists` | 409 | аккаунт с таким email уже есть |
 | `file_required` | 400 | нет файла в загрузке |
 | `unsupported_media` | 415 | расширение не из белого списка |
 | `file_too_large` | 413 | превышен `MAX_UPLOAD_MB` |

@@ -3,6 +3,11 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+if (-not (Test-Path (Join-Path $root ".env"))) {
+  Copy-Item (Join-Path $root ".env.example") (Join-Path $root ".env")
+  Write-Host "Создан .env из .env.example" -ForegroundColor Yellow
+}
+
 function Invoke-ProjectScript([string]$Name) {
   $path = Join-Path $PSScriptRoot $Name
   & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $path
@@ -13,8 +18,19 @@ function Invoke-ProjectScript([string]$Name) {
 
 $distIndex = Join-Path $root "frontend\dist\index.html"
 if (-not (Test-Path $distIndex)) {
+  $frontend = Join-Path $root "frontend"
+  if (-not (Test-Path (Join-Path $frontend "node_modules"))) {
+    Write-Host "Устанавливаем зависимости фронтенда (первый запуск)…" -ForegroundColor Cyan
+    Push-Location $frontend
+    try {
+      & npm.cmd install --no-fund --no-audit
+      if ($LASTEXITCODE -ne 0) { throw "npm install завершился ошибкой" }
+    } finally {
+      Pop-Location
+    }
+  }
   Write-Host "Сборка фронтенда (первый запуск)…" -ForegroundColor Cyan
-  Push-Location (Join-Path $root "frontend")
+  Push-Location $frontend
   try {
     if (Get-Command pnpm.cmd -ErrorAction SilentlyContinue) {
       & pnpm.cmd run build

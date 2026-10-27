@@ -1,12 +1,16 @@
-"""Hybrid semantic search: dense embeddings + PostgreSQL full-text + reranker.
+"""Hybrid semantic search: dense embeddings + full-text + exact technical terms.
 
 Pipeline
 --------
-1. Dense recall   — cosine similarity over cached bge-m3 chunk vectors.
+1. Dense recall   — cosine similarity over cached bge-m3 chunk vectors, calibrated
+                    against the corpus (z-score) so "best of a bad lot" stays low.
 2. Lexical recall — ``websearch_to_tsquery('russian', ...)`` + ``ts_rank_cd``.
-3. Fusion         — weighted sum of normalised scores (RRF-like behaviour).
-4. Rerank         — bge-reranker-v2-m3 re-scores the top candidates.
-5. De-duplicate   — near-by hits from the same lecture are collapsed.
+3. Exact evidence — IDF-weighted coverage of technical terms (C++, C#, .NET):
+                    full-text search drops their punctuation, embeddings cannot
+                    tell C++ from Java, so they are matched literally.
+4. Fusion         — dense/lexical support gated by exact-term coverage.
+5. Rerank         — bge-reranker-v2-m3 re-scores a window around the match.
+6. De-duplicate   — near-by hits from the same lecture are collapsed.
 """
 
 from __future__ import annotations
@@ -24,7 +28,13 @@ from sqlalchemy import func, select
 from ..config import Config
 from ..errors import ApiError
 from ..models import Chunk, Lecture
-from ..utils.text import highlight_spans, query_terms, snippet
+from ..utils.text import (
+    highlight_spans,
+    is_technical_atom,
+    query_terms,
+    snippet,
+    technical_pattern,
+)
 from ..utils.timefmt import format_timestamp
 from .embeddings import embeddings
 from .reranker import reranker
@@ -81,13 +91,90 @@ class SearchOutcome:
         }
 
 
-def _normalise(values: np.ndarray) -> np.ndarray:
-    if values.size == 0:
-        return values
-    minimum, maximum = float(values.min()), float(values.max())
-    if maximum - minimum < 1e-9:
-        return np.zeros_like(values)
-    return (values - minimum) / (maximum - minimum)
+def dense_relevance(dense: np.ndarray) -> np.ndarray:
+    """Calibrate raw cosine similarities against this corpus.
+
+    Min-max scaling always turns the best chunk into 1.0, even when the query
+    matches nothing.  A z-score with a floor keeps weak matches weak.
+    """
+    if dense.size == 0:
+        return dense
+    spread = float(dense.std())
+    if spread < 1e-6:
+        return np.zeros_like(dense)
+    z = (dense - float(dense.mean())) / spread
+    floor = Config.SEARCH_DENSE_Z_FLOOR
+    span = max(Config.SEARCH_DENSE_Z_SPAN, 1e-6)
+    return np.clip((z - floor) / span, 0.0, 1.0)
+
+
+def lexical_relevance(scores: np.ndarray) -> np.ndarray:
+    saturation = max(Config.SEARCH_LEX_SATURATION, 1e-6)
+    return np.clip(scores / saturation, 0.0, 1.0)
+
+
+def term_coverage(meta: list[dict], terms: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """IDF-weighted share of technical terms found in a chunk or its lecture title.
+
+    Rare terms dominate the coverage; a term absent from the whole corpus gets
+    the highest IDF and therefore zero coverage for every chunk.
+    """
+    count = len(meta)
+    if not terms or not count:
+        return np.zeros(count, dtype=np.float32), np.zeros(0, dtype=np.float32)
+    matched = np.zeros((len(terms), count), dtype=np.float32)
+    for row, term in enumerate(terms):
+        pattern = technical_pattern(term)
+        for col, item in enumerate(meta):
+            if pattern.search(item["title_cf"]) or pattern.search(item["text_cf"]):
+                matched[row, col] = 1.0
+    df = matched.sum(axis=1)
+    idf = np.log((count + 1.0) / (df + 1.0)) + 1.0
+    return (idf @ matched) / idf.sum(), df
+
+
+def title_coverage(meta: list[dict], terms: list[str]) -> np.ndarray:
+    """Share of query terms present in the lecture title (inflected forms included)."""
+    count = len(meta)
+    if not terms or not count:
+        return np.zeros(count, dtype=np.float32)
+    by_title: dict[str, float] = {}
+    coverage = np.zeros(count, dtype=np.float32)
+    for index, item in enumerate(meta):
+        title = item["title_cf"]
+        if title not in by_title:
+            hits = sum(1 for term in terms if highlight_spans(title, [term]))
+            by_title[title] = hits / len(terms)
+        coverage[index] = by_title[title]
+    return coverage
+
+
+def fuse_scores(
+    dense_rel: np.ndarray,
+    lex_rel: np.ndarray,
+    title_cov: np.ndarray,
+    coverage: np.ndarray | None,
+) -> np.ndarray:
+    weight = Config.SEARCH_LEXICAL_WEIGHT
+    support = (1.0 - weight) * dense_rel + weight * lex_rel
+    if coverage is None:
+        return np.clip(support + 0.12 * title_cov, 0.0, 1.0)
+    # A chunk without the requested technology cannot be a strong hit, no
+    # matter how "close" its embedding is.  Coverage dominates, but the
+    # remaining support still ranks chunks inside the matching lectures.
+    return np.clip(0.55 * coverage + 0.35 * support + 0.10 * title_cov, 0.0, 1.0)
+
+
+def blend_final(fused: float, rerank_score: float | None) -> float:
+    """Reranking adjusts confidence; retrieval relevance stays the base.
+
+    ``CrossEncoder.predict`` already applies sigmoid, so scores are probabilities.
+    The factor is bounded, so an undecided reranker (ASR writes "пайтон" instead
+    of "Python") cannot erase a solid retrieval hit.
+    """
+    if rerank_score is None:
+        return 0.7 * fused
+    return min(1.0, fused * (0.7 + 0.6 * float(rerank_score)))
 
 
 class SearchService:
@@ -143,6 +230,8 @@ class SearchService:
                         "start_sec": record.start_sec,
                         "end_sec": record.end_sec,
                         "text": record.text,
+                        "text_cf": record.text.casefold(),
+                        "title_cf": (lecture.title or "").casefold(),
                     }
                     for record in records
                 ]
@@ -194,22 +283,48 @@ class SearchService:
             )
 
         dense = matrix @ query_vector.astype(np.float32)
-        dense_norm = _normalise(dense)
+        dense_rel = dense_relevance(dense)
 
-        lexical = self._lexical_scores(
-            session, query, [m["chunk_id"] for m in meta]
-        )
-        lexical_norm = _normalise(
-            np.array([lexical.get(m["chunk_id"], 0.0) for m in meta], dtype=np.float32)
-        )
-        fused = dense_norm + Config.SEARCH_LEXICAL_WEIGHT * lexical_norm
+        terms = query_terms(query)
+        tech_terms = [term for term in terms if is_technical_atom(term)]
+        plain_query = " ".join(term for term in terms if not is_technical_atom(term))
 
-        candidate_count = min(len(meta), Config.SEARCH_CANDIDATES)
-        order = np.argsort(fused)[::-1][:candidate_count]
+        chunk_ids = [item["chunk_id"] for item in meta]
+        lexical = self._lexical_scores(session, plain_query, chunk_ids) if plain_query else {}
+        lex_raw = np.array(
+            [lexical.get(chunk_id, 0.0) for chunk_id in chunk_ids], dtype=np.float32
+        )
+        lex_rel = lexical_relevance(lex_raw)
+
+        coverage = None
+        if tech_terms:
+            coverage, _ = term_coverage(meta, tech_terms)
+
+        fused = fuse_scores(dense_rel, lex_rel, title_coverage(meta, terms), coverage)
+
+        eligible = np.ones(len(meta), dtype=bool)
+        if coverage is not None:
+            eligible &= coverage >= 0.2
+        candidate_count = int(min(eligible.sum(), Config.SEARCH_CANDIDATES))
+        if candidate_count == 0:
+            took_ms = int((time.perf_counter() - started) * 1000)
+            log.info(
+                "search %r -> no candidates (tech=%s) in %d ms", query, tech_terms, took_ms
+            )
+            return SearchOutcome([], False, took_ms, 0)
+        positions = np.flatnonzero(eligible)
+        order = positions[np.argsort(fused[positions])[::-1][:candidate_count]]
 
         hits: list[SearchHit] = []
         for position in order:
             item = meta[int(position)]
+            scores = {
+                "dense": float(dense[int(position)]),
+                "lexical": float(lex_raw[int(position)]),
+                "fused": float(fused[int(position)]),
+            }
+            if coverage is not None:
+                scores["exact"] = float(coverage[int(position)])
             hits.append(
                 SearchHit(
                     chunk_id=item["chunk_id"],
@@ -220,11 +335,7 @@ class SearchService:
                     text=item["text"],
                     snippet=item["text"],
                     spans=[],
-                    scores={
-                        "dense": float(dense[int(position)]),
-                        "lexical": float(lexical.get(item["chunk_id"], 0.0)),
-                        "fused": float(fused[int(position)]),
-                    },
+                    scores=scores,
                 )
             )
 
@@ -232,42 +343,59 @@ class SearchService:
         if use_rerank and Config.RERANKER_ENABLED and len(hits) > 1:
             window = min(len(hits), max(8, Config.RERANKER_TOP_K))
             head = hits[:window]
-            scores = self._rerank_scores(query, head)
+            scores = self._rerank_scores(query, head, terms)
             if scores is not None:
                 reranked = True
                 for hit in head:
                     hit.scores["rerank"] = scores[hit.chunk_id]
-                head.sort(key=lambda h: h.scores["rerank"], reverse=True)
-                hits = head + hits[window:]
+                    hit.scores["final"] = blend_final(
+                        hit.scores["fused"], scores[hit.chunk_id]
+                    )
+                # Non-reranked candidates stay below every reranked hit.
+                tail_cap = max(0.0, min(hit.scores["final"] for hit in head) - 1e-3)
+                for hit in hits[window:]:
+                    hit.scores["final"] = min(0.7 * hit.scores["fused"], tail_cap)
+                hits.sort(key=lambda item: item.scores["final"], reverse=True)
+        if not reranked:
+            for hit in hits:
+                hit.scores["final"] = hit.scores["fused"]
 
-        terms = query_terms(query)
         popular: list[SearchHit] = []
         for hit in hits:
+            if hit.scores["final"] < Config.SEARCH_MIN_SCORE:
+                continue
             if not self._is_distinct(hit, popular):
                 continue
             spans = highlight_spans(hit.text, terms)
             hit.spans = spans
             hit.snippet, hit.spans = snippet(hit.text, spans, limit=340)
-            hit.scores["final"] = hit.scores.get("rerank", hit.scores["fused"])
             popular.append(hit)
             if len(popular) >= limit:
                 break
 
         took_ms = int((time.perf_counter() - started) * 1000)
         log.info(
-            "search %r -> %d hits (%d candidates) in %d ms%s",
-            query, len(popular), len(meta), took_ms, " +rerank" if reranked else "",
+            "search %r -> %d hits (%d candidates) in %d ms%s%s",
+            query,
+            len(popular),
+            len(meta),
+            took_ms,
+            " +rerank" if reranked else "",
+            f" tech={tech_terms}" if tech_terms else "",
         )
         return SearchOutcome(popular, reranked, took_ms, len(meta))
 
-    def _rerank_scores(self, query: str, hits: list[SearchHit]) -> dict[int, float] | None:
+    def _rerank_scores(
+        self, query: str, hits: list[SearchHit], terms: list[str]
+    ) -> dict[int, float] | None:
         """Rerank with an LRU cache: demo-friendly and stable under repeat queries."""
         key = (query.strip().lower(), tuple(hit.chunk_id for hit in hits))
         cached = self._rerank_cache.get(key)
         if cached is not None:
             self._rerank_cache.move_to_end(key)
             return cached
-        scores = reranker.rerank(query, [hit.text for hit in hits])
+        passages = [self._rerank_passage(hit.text, terms) for hit in hits]
+        scores = reranker.rerank(query, passages)
         if scores is None or len(scores) != len(hits):
             return None
         mapping = {hit.chunk_id: float(score) for hit, score in zip(hits, scores)}
@@ -275,6 +403,15 @@ class SearchService:
         if len(self._rerank_cache) > self._rerank_cache_limit:
             self._rerank_cache.popitem(last=False)
         return mapping
+
+    @staticmethod
+    def _rerank_passage(text: str, terms: list[str], limit: int = 420) -> str:
+        """Feed the reranker a window around the match instead of the chunk head."""
+        spans = highlight_spans(text, terms)
+        if not spans:
+            return text[:limit]
+        passage, _ = snippet(text, spans, limit=limit)
+        return passage
 
     def _lexical_scores(self, session, query: str, chunk_ids: list[int]) -> dict[int, float]:
         if not chunk_ids:

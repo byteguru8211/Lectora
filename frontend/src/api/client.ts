@@ -13,6 +13,7 @@ import type {
   User,
   SystemInfo,
   VideoGroup,
+  RecommendationFeed,
 } from "./types";
 
 export class ApiError extends Error {
@@ -139,6 +140,9 @@ export const api = {
   shareLecture: (id: string) => request<{ token: string; path: string }>(`/api/lectures/${id}/share`, { method: "POST" }),
   shareGroup: (id: string) => request<{ token: string; path: string }>(`/api/groups/${id}/share`, { method: "POST" }),
   publicLectures: () => request<{ items: (LectureCard & { owner_name: string; group_name: string | null })[] }>("/api/public/lectures"),
+  recommendations: (limit = 12) => request<RecommendationFeed>(`/api/recommendations?limit=${limit}`),
+  recordPublicView: (id: string) =>
+    request<{ tracked: boolean; view_count: number; first_view: boolean }>(`/api/public/lectures/${id}/view`, { method: "POST" }),
   publicLecture: (id: string) => request<LectureDetail>(`/api/public/lectures/${id}`),
   sharedVideo: (token: string) => request<LectureDetail>(`/api/shared/videos/${token}`),
   sharedGroup: (token: string) => request<{ group: VideoGroup; items: LectureCard[] }>(`/api/shared/groups/${token}`),

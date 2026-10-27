@@ -1,6 +1,6 @@
 ﻿# Подготовка окружения Lectora: venv, зависимости, база, фронтенд.
 # Запуск:  powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
-param([switch]$Cuda)
+param([switch]$Cuda, [switch]$Cpu)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -19,6 +19,22 @@ foreach ($versionFlag in @("-3.12", "-3.11")) {
       break
     }
   } catch { }
+}
+if (-not $pythonExe) {
+  # Some Windows environments ship python.exe without the py launcher.
+  foreach ($command in @("python", "python3")) {
+    try {
+      $candidate = & $command -c "import sys; print(sys.executable)" 2>$null
+      if ($LASTEXITCODE -eq 0 -and (Test-Path $candidate)) {
+        $version = & $candidate -c "import sys; print('.'.join(map(str, sys.version_info[:2])))"
+        if ($version -in @("3.11", "3.12")) {
+          $pythonExe = $candidate
+          Write-Host "Python $version OK ($pythonExe)"
+          break
+        }
+      }
+    } catch { }
+  }
 }
 if (-not $pythonExe) { Write-Error "Установите Python 3.12 или 3.11: Python 3.14 пока несовместим с CUDA-сборкой PyTorch"; exit 1 }
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error "Node.js не найден в PATH"; exit 1 }
@@ -39,19 +55,19 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 }
 & ".venv\Scripts\python.exe" -m pip install --upgrade pip --quiet
 if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось обновить pip"; exit 1 }
-if ($Cuda) {
-  Write-Host "Устанавливаем PyTorch с CUDA для NVIDIA GPU"
-  & ".venv\Scripts\python.exe" -m pip install --upgrade --quiet torch --index-url https://download.pytorch.org/whl/cu128
+if ($Cpu) {
+  Write-Host "Устанавливаем PyTorch для CPU (запрошено -Cpu)"
+  & ".venv\Scripts\python.exe" -m pip install --upgrade --quiet torch --index-url https://download.pytorch.org/whl/cpu
+  if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить PyTorch"; exit 1 }
 } else {
-  & ".venv\Scripts\python.exe" -m pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
+  # Автовыбор: NVIDIA GPU + совместимый драйвер => CUDA-сборка, иначе CPU.
+  $gpuArgs = @()
+  if ($Cuda) { $gpuArgs = @("-Force") }
+  & powershell -ExecutionPolicy Bypass -File scripts\install_gpu.ps1 @gpuArgs
+  if ($LASTEXITCODE -ne 0) { Write-Warning "Не удалось подготовить PyTorch; пробуем CPU-сборку"; & ".venv\Scripts\python.exe" -m pip install --upgrade --quiet torch --index-url https://download.pytorch.org/whl/cpu }
 }
-if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить PyTorch"; exit 1 }
 & ".venv\Scripts\python.exe" -m pip install --quiet -r backend\requirements.txt
 if ($LASTEXITCODE -ne 0) { Write-Error "Не удалось установить зависимости backend"; exit 1 }
-if ($Cuda) {
-  & ".venv\Scripts\python.exe" -c "import sys, torch; print('Python', sys.version.split()[0]); print('PyTorch', torch.__version__); print('GPU', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'НЕ ОБНАРУЖЕНА'); raise SystemExit(0 if torch.cuda.is_available() else 2)"
-  if ($LASTEXITCODE -ne 0) { Write-Error "CUDA не активировалась. Проверьте драйвер NVIDIA и совместимость PyTorch"; exit 1 }
-}
 Write-Host "Зависимости установлены"
 
 Write-Step "Конфигурация"
@@ -95,6 +111,7 @@ if ((Test-Path "tools\pgsql\bin\initdb.exe") -and -not (Test-Path "data\pgdata\P
 
 if (Test-Path "tools\pgsql\bin\pg_isready.exe") {
   & powershell -ExecutionPolicy Bypass -File scripts\start_pg.ps1
+  if ($LASTEXITCODE -ne 0) { Write-Error "PostgreSQL не запустился"; exit 1 }
   $env:PGPASSWORD = "lectora"
   $exists = & "tools\pgsql\bin\psql.exe" -h 127.0.0.1 -p 5433 -U lectora -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='lectora'" 2>$null
   if ("$exists".Trim() -ne "1") {

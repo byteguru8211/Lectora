@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import gc
 import logging
+import wave
 from pathlib import Path
+
+import numpy as np
 
 from ..config import Config
 from ..errors import ApiError
@@ -53,10 +56,15 @@ class WhisperAsrService:
         on_progress: ProgressCb | None = None,
         duration_hint: float | None = None,
     ) -> Transcription:
+        if use_gpu and not self._cuda_available():
+            log.info("CUDA unavailable for Whisper; using CPU")
+            use_gpu = False
         device = "cuda" if use_gpu else "cpu"
         model = self._load(device)
+        # Decode the 16 kHz mono PCM ourselves: newer PyAV releases dropped the
+        # metadata_errors argument that faster-whisper passes to av.open.
         raw_segments, info = model.transcribe(
-            str(wav_path),
+            self._read_wav(wav_path),
             language="ru",
             beam_size=5,
             vad_filter=True,
@@ -87,6 +95,33 @@ class WhisperAsrService:
             raise ApiError("Whisper не распознал речь в записи", 422, "no_speech_detected")
         log.info("faster-whisper transcribed %s: %d words, %d segments", Path(wav_path).name, word_count, len(segments))
         return Transcription(segments=segments, word_count=word_count, duration_sec=duration)
+
+    @staticmethod
+    def _read_wav(path: Path) -> np.ndarray:
+        try:
+            with wave.open(str(path), "rb") as handle:
+                if handle.getnchannels() != 1 or handle.getsampwidth() != 2:
+                    raise ValueError("expected mono 16-bit PCM")
+                if handle.getframerate() != Config.ASR_SAMPLE_RATE:
+                    raise ValueError(f"expected {Config.ASR_SAMPLE_RATE} Hz")
+                frames = handle.readframes(handle.getnframes())
+        except (OSError, EOFError, ValueError) as exc:
+            raise ApiError(
+                "Не удалось прочитать аудио для Whisper",
+                422,
+                "whisper_audio_failed",
+                {"reason": str(exc)[:200]},
+            ) from exc
+        return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+
+    @staticmethod
+    def _cuda_available() -> bool:
+        try:
+            import torch
+
+            return bool(torch.cuda.is_available())
+        except Exception:
+            return False
 
     def unload(self) -> None:
         self._model = None

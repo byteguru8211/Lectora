@@ -102,6 +102,20 @@ def _enqueue(lecture: Lecture) -> int:
     return runner.enqueue(lecture.id)
 
 
+def _refresh_interests(session, user_id) -> None:
+    """Refresh the materialised topic profile after classification changes."""
+    if user_id is None:
+        return
+    try:
+        from ..services.recommendations import recommendation_service
+
+        recommendation_service.rebuild_profile(session, user_id)
+        session.commit()
+    except Exception:
+        session.rollback()
+        log.exception("interest profile refresh failed for user %s", user_id)
+
+
 # ---------------------------------------------------------------- collection
 @bp.get("")
 def list_lectures():
@@ -138,6 +152,7 @@ def list_lectures():
                 changed = True
         if changed:
             session.commit()
+            _refresh_interests(session, g.user_id)
         return jsonify(
             {"items": [lecture_card(row) for row in rows], "total": total}
         )
@@ -314,6 +329,7 @@ def update_lecture(lecture_id: str):
         if lecture.topic and not lecture.subject:
             raise ApiError("Для темы нужно выбрать предмет", 400, "subject_required")
         session.commit()
+        _refresh_interests(session, g.user_id)
         return jsonify(lecture_card(lecture))
     finally:
         session.close()
@@ -329,6 +345,7 @@ def delete_lecture(lecture_id: str):
         session.commit()
         storage().delete_lecture(key)
         search_service.invalidate(lecture.id)
+        _refresh_interests(session, g.user_id)
         return ("", 204)
     finally:
         session.close()

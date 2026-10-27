@@ -166,6 +166,12 @@ class Config:
     SEARCH_MAX_LIMIT = _int("SEARCH_MAX_LIMIT", 50)
     SEARCH_CANDIDATES = _int("SEARCH_CANDIDATES", 40)
     SEARCH_LEXICAL_WEIGHT = _float("SEARCH_LEXICAL_WEIGHT", 0.35)
+    # Dense cosine is calibrated against the corpus instead of min-max: a query
+    # that matches nothing must not produce a "1.0" result just by being first.
+    SEARCH_DENSE_Z_FLOOR = _float("SEARCH_DENSE_Z_FLOOR", 1.2)
+    SEARCH_DENSE_Z_SPAN = _float("SEARCH_DENSE_Z_SPAN", 2.8)
+    SEARCH_LEX_SATURATION = _float("SEARCH_LEX_SATURATION", 0.45)
+    SEARCH_MIN_SCORE = _float("SEARCH_MIN_SCORE", 0.14)
 
     # --- misc ---------------------------------------------------------
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

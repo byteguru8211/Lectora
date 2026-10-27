@@ -8,11 +8,30 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from functools import lru_cache
 from typing import Iterable
 
 _WORD_RE = re.compile(r"[а-яёa-z0-9]+(?:[-'][а-яёa-z0-9]+)*", re.IGNORECASE)
 _SENTENCE_RE = re.compile(r"(?<=[.!?…])\s+")
 _SPACE_RE = re.compile(r"\s+")
+# Atoms keep characters that matter for technology names: C++, C#, .NET, node.js.
+_ATOM_RE = re.compile(r"\.?[a-zа-яё0-9][a-zа-яё0-9+#]*(?:\.[a-z0-9]+)*", re.IGNORECASE)
+
+# Speech recognition writes technology names phonetically, so aliases are part
+# of matching rather than a nice-to-have: Vosk renders "C++" as "плюс плюс".
+_TECH_ALIASES = {
+    "c++": r"(?:[cс]\s*\+\s*\+|cpp|си\s+плюс\s+плюс|плюс\s+плюс)",
+    "c#": r"(?:[cс]\s*#|си\s+шарп)",
+    ".net": r"(?:\.net|дот\s*нет)",
+}
+
+# The same aliases, but applied to the query before it is split into atoms.
+_QUERY_ALIASES = (
+    (re.compile(r"\b(?:си\s+)?плюс\s+плюс\b", re.IGNORECASE), " c++ "),
+    (re.compile(r"\bcpp\b", re.IGNORECASE), " c++ "),
+    (re.compile(r"\bси\s+шарп\b", re.IGNORECASE), " c# "),
+    (re.compile(r"\bдот\s*нет\b", re.IGNORECASE), " .net "),
+)
 
 STOPWORDS = frozenset(
     """
@@ -54,6 +73,35 @@ def tokens(text: str) -> list[str]:
 
 def content_tokens(text: str) -> list[str]:
     return [t for t in tokens(text) if len(t) > 2 and t not in STOPWORDS]
+
+
+def search_atoms(text: str) -> list[str]:
+    """Split a query into units that preserve technical punctuation.
+
+    ``"C++ указатели"`` → ``["c++", "указатели"]``; plain words stay plain.
+    Phonetic spellings ("си плюс плюс", "cpp") become the canonical atom.
+    """
+    normalized = text or ""
+    for pattern, replacement in _QUERY_ALIASES:
+        normalized = pattern.sub(replacement, normalized)
+    return [match.group(0).lower() for match in _ATOM_RE.finditer(normalized)]
+
+
+def is_technical_atom(atom: str) -> bool:
+    """Technical atoms need exact matching: full-text search drops ``+``/``#``/``.``."""
+    return any(ch in atom for ch in "+#.") or (len(atom) == 1 and atom.isascii())
+
+
+@lru_cache(maxsize=256)
+def technical_pattern(term: str) -> re.Pattern[str]:
+    term = term.lower()
+    # "c++11" is still about C++; drop the version suffix when an alias exists.
+    base = term if term in _TECH_ALIASES else re.sub(r"\d+$", "", term)
+    body = _TECH_ALIASES.get(base)
+    if body is None:
+        body = re.escape(term).replace(r"\+", r"\s*\+").replace(r"\#", r"\s*#")
+    prefix = r"(?<![a-zа-яё0-9])" if term[:1].isalpha() else ""
+    return re.compile(rf"{prefix}{body}(?![a-zа-яё])", re.IGNORECASE)
 
 
 def split_sentences(text: str) -> list[str]:
@@ -138,13 +186,18 @@ def highlight_spans(text: str, terms: list[str], *, radius: int = 160) -> list[d
     """Find query terms in ``text`` and return character spans for <mark>."""
     if not text or not terms:
         return []
-    stems = {_stem(t) for t in terms if len(t) > 2}
     spans: list[dict] = []
+    for term in terms:
+        if is_technical_atom(term):
+            for match in technical_pattern(term).finditer(text):
+                spans.append({"start": match.start(), "end": match.end()})
+    words = [t for t in terms if not is_technical_atom(t)]
+    stems = {_stem(t) for t in words if len(t) > 2}
     for match in _WORD_RE.finditer(text):
         word = match.group(0).lower()
-        if len(word) < 3 and word not in terms:
+        if len(word) < 3 and word not in words:
             continue
-        if word in terms or _stem(word) in stems or any(
+        if word in words or _stem(word) in stems or any(
             word.startswith(s[: max(4, len(s) - 1)]) and len(s) >= 4 for s in stems
         ):
             spans.append({"start": match.start(), "end": match.end()})
@@ -189,7 +242,12 @@ def snippet(text: str, spans: list[dict], *, limit: int = 320) -> tuple[str, lis
 
 
 def query_terms(query: str) -> list[str]:
-    terms = content_tokens(query)
+    """Meaningful query units: technical atoms survive as-is, plain words drop stopwords."""
+    atoms = search_atoms(query)
+    words = set(content_tokens(query))
+    terms = [atom for atom in atoms if is_technical_atom(atom) or atom in words]
+    if not terms:
+        terms = [atom for atom in atoms if len(atom) > 2 and atom not in STOPWORDS]
     if not terms:
         terms = tokens(query)
     return list(dict.fromkeys(terms))

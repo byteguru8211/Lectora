@@ -69,8 +69,8 @@ export function UploadModal({ open, onClose, initialMode = "file" }: Props) {
     if (!open) return;
     api.systemInfo().then(({ acceleration, llm }) => {
       if (acceleration.cuda && acceleration.nvenc) setGpuStatus(`${acceleration.cuda_device ?? "NVIDIA GPU"}: CUDA и NVENC доступны`);
-      else if (acceleration.nvenc) setGpuStatus("NVENC доступен; для CUDA нужна GPU-сборка PyTorch");
-      else if (acceleration.cuda) setGpuStatus(`${acceleration.cuda_device ?? "CUDA"}: ускорение индекса доступно`);
+      else if (acceleration.nvenc) setGpuStatus("NVENC доступен, CUDA выключена. Запустите scripts\\install_gpu.ps1");
+      else if (acceleration.cuda) setGpuStatus(`${acceleration.cuda_device ?? "CUDA"}: CUDA доступна; для NVENC обновите драйвер NVIDIA — сейчас видео кодируется на CPU`);
       else setGpuStatus("GPU-ускорение не найдено — будет использован CPU");
       if (llm?.modes) {
         setLlmModes(llm.modes);

@@ -120,6 +120,7 @@ def discover_tools() -> Tools:
 class MediaService:
     def __init__(self) -> None:
         self.tools = discover_tools()
+        self._nvenc: bool | None = None
 
     # -- public API ----------------------------------------------------
     @property
@@ -135,13 +136,36 @@ class MediaService:
             )
 
     def supports_nvenc(self) -> bool:
+        """Check that NVENC is compiled in *and* usable with the installed driver.
+
+        Listing encoders is not enough: a fresh ffmpeg may require a newer
+        NVENC API than the driver provides, and the failure only shows up when
+        the encoder is opened.
+        """
+        if self._nvenc is not None:
+            return self._nvenc
         if not self.tools.ffmpeg:
+            self._nvenc = False
             return False
         try:
-            result = _run([self.tools.ffmpeg, "-hide_banner", "-encoders"], timeout=20)
-            return result.returncode == 0 and "h264_nvenc" in result.stdout
+            listed = _run([self.tools.ffmpeg, "-hide_banner", "-encoders"], timeout=20)
+            if listed.returncode != 0 or "h264_nvenc" not in listed.stdout:
+                self._nvenc = False
+                return False
+            probe = _run(
+                [
+                    self.tools.ffmpeg, "-hide_banner", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1",
+                    "-frames:v", "1", "-c:v", "h264_nvenc", "-f", "null", "-",
+                ],
+                timeout=20,
+            )
+            self._nvenc = probe.returncode == 0
+            if not self._nvenc:
+                log.info("NVENC is listed but unavailable for this driver")
         except Exception:
-            return False
+            self._nvenc = False
+        return self._nvenc
 
     def probe(self, path: Path) -> MediaInfo:
         self.require()
@@ -276,7 +300,7 @@ class MediaService:
         ]
         audio_args = ["-c:a", "aac", "-b:a", "160k"] if info.has_audio else ["-an"]
         proc = None
-        if use_gpu:
+        if use_gpu and self.supports_nvenc():
             gpu_args = base_args + [
                 "-c:v", "h264_nvenc", "-preset", "p4", "-cq", "23",
                 "-pix_fmt", "yuv420p", "-movflags", "+faststart",

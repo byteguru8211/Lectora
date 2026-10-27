@@ -16,6 +16,7 @@ from .api import qa as qa_api
 from .api import search as search_api
 from .api import system as system_api
 from .api import auth as auth_api
+from .api import recommendations as recommendations_api
 from .api import sharing as sharing_api
 from .config import Config
 from .errors import register_error_handlers
@@ -83,6 +84,7 @@ def create_app(config_object: type[Config] = Config, overrides: dict | None = No
     app.register_blueprint(system_api.bp)
     app.register_blueprint(auth_api.bp)
     app.register_blueprint(sharing_api.bp)
+    app.register_blueprint(recommendations_api.bp)
 
     if app.config.get("WARMUP", True) and runner.pending_count() == 0:
         threading.Thread(target=_warm_up, name="lectora-warmup", daemon=True).start()

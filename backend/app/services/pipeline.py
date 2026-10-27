@@ -337,6 +337,7 @@ class Pipeline:
                 job.finished_at = utcnow()
             session.commit()
             search_service.invalidate(lecture.id)
+            self._refresh_interests(session, lecture)
             log.info(
                 "pipeline done %s in %.1fs (%d segments, %d chunks, llm=%s)",
                 lecture.id,
@@ -396,6 +397,7 @@ class Pipeline:
                 progress.job.progress = 100.0
                 progress.job.finished_at = utcnow()
             session.commit()
+            self._refresh_interests(session, lecture)
             log.info(
                 "notes job done %s in %.1fs (mode=%s, model=%s, sections=%d)",
                 lecture.id,
@@ -459,6 +461,20 @@ class Pipeline:
                 lecture.title = generated[:300]
                 log.info("generated title: %s", lecture.title)
         session.commit()
+
+    @staticmethod
+    def _refresh_interests(session, lecture: Lecture) -> None:
+        """Refresh the owner's topic profile without failing the pipeline."""
+        if lecture.user_id is None:
+            return
+        try:
+            from .recommendations import recommendation_service
+
+            recommendation_service.rebuild_profile(session, lecture.user_id)
+            session.commit()
+        except Exception:  # pragma: no cover - recommendations are optional
+            session.rollback()
+            log.exception("interest profile refresh failed for %s", lecture.id)
 
     # -- optional LLM punctuation --------------------------------------
     def _punctuate(self, segments: list[Segment]) -> list[Segment]:

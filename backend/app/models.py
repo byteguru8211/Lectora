@@ -21,6 +21,7 @@ from sqlalchemy import (
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -285,4 +286,57 @@ class SearchLog(Base):
     reranked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class UserInterest(Base):
+    """Materialised topic profile used by the "For you" feed.
+
+    The table is a cache, not a source of truth: it is rebuilt from the user's
+    ready lectures and public views, so edits and deletions propagate without
+    fragile incremental bookkeeping.
+    """
+
+    __tablename__ = "user_interests"
+    __table_args__ = (
+        UniqueConstraint("user_id", "kind", "topic_key", name="uq_user_interests_topic"),
+        Index("ix_user_interests_user_weight", "user_id", "weight"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    topic_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    label: Mapped[str] = mapped_column(String(200), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    weight: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class LectureView(Base):
+    """First and repeated views of a public lecture by an authenticated user."""
+
+    __tablename__ = "lecture_views"
+    __table_args__ = (
+        UniqueConstraint("user_id", "lecture_id", name="uq_lecture_views_user_lecture"),
+        Index("ix_lecture_views_user", "user_id"),
+        Index("ix_lecture_views_lecture", "lecture_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    lecture_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("lectures.id", ondelete="CASCADE"), nullable=False
+    )
+    view_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    first_viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_viewed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

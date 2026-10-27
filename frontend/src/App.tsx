@@ -14,6 +14,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { useAuth } from "./context/AuthContext";
 import { PublicLibraryPage } from "./pages/PublicLibraryPage";
 import { SharedLecturePage, SharedPage } from "./pages/SharedPage";
+import { api } from "./api/client";
 
 export default function App() {
   const auth = useAuth();
@@ -70,5 +71,14 @@ export default function App() {
 
 function PublicLectureRoute() {
   const { lectureId = "" } = useParams();
+
+  useEffect(() => {
+    if (!lectureId) return;
+    const key = `lectora:public-view:${lectureId}`;
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+    api.recordPublicView(lectureId).catch(() => sessionStorage.removeItem(key));
+  }, [lectureId]);
+
   return <LecturePage accessBase={`/api/public/lectures/${lectureId}`} backTo="/public" backLabel="Публичные видео" />;
 }

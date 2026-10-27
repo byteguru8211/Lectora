@@ -228,3 +228,32 @@ export interface Stats {
 export interface UploadResult extends LectureCard {
   job_id: number;
 }
+
+export type RecommendationMode = "personalized" | "trending" | "cold_start";
+
+export interface RecommendationInfo {
+  score: number;
+  reason: string;
+  matched_topics: string[];
+  personalized: boolean;
+}
+
+export interface PublicLecture extends LectureCard {
+  owner_name: string;
+  group_name: string | null;
+  recommendation?: RecommendationInfo;
+}
+
+export interface InterestChip {
+  label: string;
+  kind: "subject" | "topic" | "keyword";
+  weight: number;
+}
+
+export interface RecommendationFeed {
+  mode: RecommendationMode;
+  fallback: boolean;
+  interests: InterestChip[];
+  items: PublicLecture[];
+  generated_at: string | null;
+}

@@ -146,7 +146,9 @@ class EmbeddingService:
         if cached is not None:
             self._query_cache.move_to_end(key)
             return cached
-        vector = self.encode_documents([query])[0]
+        # Reuse the device already holding the model: otherwise a GPU-encoded
+        # lecture would force a full CPU reload on the next query.
+        vector = self.encode_documents([query], device=self._device)[0]
         self._query_cache[key] = vector
         if len(self._query_cache) > self._cache_limit:
             self._query_cache.popitem(last=False)
