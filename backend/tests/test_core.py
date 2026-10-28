@@ -11,6 +11,7 @@ from app.services.chunker import TimedText, build_chunks
 from app.services.summarizer import Summarizer
 from app.services.asr import Segment
 from app.utils.text import (
+    canonical_label,
     highlight_spans,
     keywords,
     query_terms,
@@ -46,6 +47,14 @@ def test_restore_punctuation_capitalises_and_adds_period():
 def test_restore_punctuation_handles_fillers():
     text = restore_punctuation("э вот это куб", end=".")
     assert "э" not in text.split()
+
+
+def test_canonical_label_merges_case_variants():
+    assert canonical_label("математический анализ") == "Математический анализ"
+    assert canonical_label("«Математический анализ».") == "Математический анализ"
+    assert canonical_label("  МАТЕМАТИЧЕСКИЙ   АНАЛИЗ ") == "Математический анализ"
+    assert canonical_label("C++") == "C++"
+    assert canonical_label("") is None
 
 
 def test_split_sentences():

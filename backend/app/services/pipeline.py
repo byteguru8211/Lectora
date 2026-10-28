@@ -33,7 +33,7 @@ from ..models import (
     TranscriptSegment,
     utcnow,
 )
-from ..utils.text import normalize_space
+from ..utils.text import canonical_label, normalize_space
 from ..utils.timefmt import format_timestamp
 from .asr import AsrService, Segment
 from .chunker import build_chunks
@@ -477,9 +477,9 @@ class Pipeline:
         lecture.questions = list(notes.questions or [])
         lecture.llm_model = notes.model if notes.llm_used else None
         lecture.llm_mode_used = notes.mode
-        lecture.subject = notes.category or "Другое"
-        lecture.topic = notes.subcategory or (
-            notes.sections[0].title if notes.sections else None
+        lecture.subject = canonical_label(notes.category, 100) or "Другое"
+        lecture.topic = canonical_label(notes.subcategory, 120) or (
+            canonical_label(notes.sections[0].title, 120) if notes.sections else None
         )
         if lecture.title_auto and notes.title:
             generated = notes.title.strip()

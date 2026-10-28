@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
-import type { InterestChip, PublicLecture, RecommendationFeed } from "../api/types";
+import type {
+  InterestChip,
+  PublicGroup,
+  PublicLecture,
+  RecommendationFeed,
+} from "../api/types";
 import { LectureCard } from "../components/LectureCard";
-import { BookIcon, SparkIcon, UploadIcon } from "../components/icons";
+import { BookIcon, FolderIcon, SparkIcon, UploadIcon } from "../components/icons";
 import { useUi } from "../context/UiContext";
+import { formatDurationLong } from "../utils/format";
 
-type Tab = "all" | "for-you";
+type Tab = "all" | "for-you" | "groups";
 
 const KIND_LABELS: Record<InterestChip["kind"], string> = {
   subject: "Предмет",
@@ -32,10 +39,13 @@ export function PublicLibraryPage() {
   const ui = useUi();
   const [tab, setTab] = useState<Tab>("all");
   const [items, setItems] = useState<PublicLecture[]>([]);
+  const [groups, setGroups] = useState<PublicGroup[]>([]);
   const [feed, setFeed] = useState<RecommendationFeed | null>(null);
   const [loadingAll, setLoadingAll] = useState(true);
+  const [loadingGroups, setLoadingGroups] = useState(true);
   const [loadingFeed, setLoadingFeed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [groupsError, setGroupsError] = useState<string | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -46,6 +56,13 @@ export function PublicLibraryPage() {
         setError(err instanceof ApiError ? err.message : "Не удалось загрузить публичные видео"),
       )
       .finally(() => setLoadingAll(false));
+    api
+      .publicGroups()
+      .then((data) => setGroups(data.items))
+      .catch((err) =>
+        setGroupsError(err instanceof ApiError ? err.message : "Не удалось загрузить группы"),
+      )
+      .finally(() => setLoadingGroups(false));
   }, []);
 
   const loadFeed = useCallback(async () => {
@@ -82,7 +99,11 @@ export function PublicLibraryPage() {
       <div className="library-toolbar">
         <h2 className="library-toolbar__title">Каталог</h2>
         <span className="library-toolbar__count">
-          {tab === "all" ? items.length : feed?.items.length ?? ""}
+          {tab === "all"
+            ? items.length
+            : tab === "groups"
+              ? groups.length
+              : feed?.items.length ?? ""}
         </span>
         <div className="filters" role="tablist" aria-label="Режим каталога">
           <button
@@ -92,6 +113,15 @@ export function PublicLibraryPage() {
             onClick={() => setTab("all")}
           >
             Все видео
+          </button>
+          <button
+            role="tab"
+            aria-selected={tab === "groups"}
+            className={`filter ${tab === "groups" ? "is-active" : ""}`}
+            onClick={() => setTab("groups")}
+          >
+            <FolderIcon size={13} style={{ marginRight: 5, verticalAlign: -2 }} />
+            Группы
           </button>
           <button
             role="tab"
@@ -105,7 +135,26 @@ export function PublicLibraryPage() {
         </div>
       </div>
 
-      {tab === "all" ? (
+      {tab === "groups" ? (
+        <>
+          {groupsError && <div className="error-box">{groupsError}</div>}
+          {loadingGroups ? (
+            <SkeletonGrid />
+          ) : groups.length ? (
+            <div className="public-groups">
+              {groups.map((group) => (
+                <PublicGroupCard key={group.id} group={group} />
+              ))}
+            </div>
+          ) : (
+            <EmptyState
+              title="Публичных групп пока нет"
+              text="Объедините лекции в группу и сделайте её публичной — тогда здесь появится курс и его шпаргалка."
+              onUpload={() => ui.openUpload("file")}
+            />
+          )}
+        </>
+      ) : tab === "all" ? (
         <>
           {error && <div className="error-box">{error}</div>}
           {loadingAll ? (
@@ -180,6 +229,32 @@ export function PublicLibraryPage() {
         </>
       )}
     </>
+  );
+}
+
+function PublicGroupCard({ group }: { group: PublicGroup }) {
+  return (
+    <Link className="public-group-card" to={`/public/groups/${group.id}`}>
+      <span className="public-group-card__icon">
+        <FolderIcon size={22} />
+      </span>
+      <div className="public-group-card__body">
+        <div className="public-group-card__head">
+          <h3>{group.name}</h3>
+          {group.exam_ready && (
+            <span className="public-group-card__badge">
+              <SparkIcon size={12} /> Шпаргалка
+            </span>
+          )}
+        </div>
+        <p>{group.description || "Публичный курс лекций"}</p>
+        <div className="public-group-card__meta">
+          <span>{group.video_count} видео</span>
+          {group.duration_sec > 0 && <span>{formatDurationLong(group.duration_sec)}</span>}
+          <b>{group.owner_name}</b>
+        </div>
+      </div>
+    </Link>
   );
 }
 

@@ -104,6 +104,35 @@ def technical_pattern(term: str) -> re.Pattern[str]:
     return re.compile(rf"{prefix}{body}(?![a-zа-яё])", re.IGNORECASE)
 
 
+_LABEL_LEAD = " \t\"'«„“”("
+_LABEL_TAIL = " \t\"'»„“”).,;:—–-"
+_LABEL_WORDY = re.compile(r"[a-zа-яё0-9\s\-–/]+", re.IGNORECASE)
+_LABEL_SEP_RE = re.compile(r"\s*[/|]\s*")
+
+
+def canonical_label(value: str | None, limit: int = 100) -> str | None:
+    """Bring a model-written category label to one display form.
+
+    The same subject arrives as "математический анализ", "Математический
+    анализ" and "«Математический анализ»"; without collapsing those the library
+    shows several identical-looking groups.  This is plain string work, so it
+    costs nothing at ingest time.
+    """
+    text = normalize_space(str(value or "")).lstrip(_LABEL_LEAD).rstrip(_LABEL_TAIL)
+    if not text:
+        return None
+    text = normalize_space(_LABEL_SEP_RE.sub(" / ", text))
+    # Lowercase the rest only for plain wordy labels, so «C++», «C#» and
+    # «.NET» keep their technical spelling; mixed forms keep their casing too.
+    if _LABEL_WORDY.fullmatch(text):
+        text = text.lower() if text.isupper() else text
+        text = capitalize_first(text)
+    if len(text) > limit:
+        cut = text[:limit].rsplit(" ", 1)[0].rstrip(_LABEL_TAIL)
+        text = cut or text[:limit]
+    return text or None
+
+
 def split_sentences(text: str) -> list[str]:
     text = normalize_space(text)
     if not text:

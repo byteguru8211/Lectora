@@ -14,6 +14,7 @@ import { ExamSheetPage } from "./pages/ExamSheetPage";
 import { AuthPage } from "./pages/AuthPage";
 import { useAuth } from "./context/AuthContext";
 import { PublicLibraryPage } from "./pages/PublicLibraryPage";
+import { PublicGroupPage } from "./pages/PublicGroupPage";
 import { SharedLecturePage, SharedPage } from "./pages/SharedPage";
 import { api } from "./api/client";
 
@@ -59,6 +60,8 @@ export default function App() {
             <Route path="/account" element={<AccountPage />} />
             <Route path="/account/groups/:groupId/exam" element={<ExamSheetPage />} />
             <Route path="/public" element={<PublicLibraryPage />} />
+            <Route path="/public/groups/:groupId" element={<PublicGroupPage />} />
+            <Route path="/public/groups/:groupId/exam" element={<ExamSheetPage publicMode />} />
             <Route path="/public/lectures/:lectureId" element={<PublicLectureRoute />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>

@@ -7,7 +7,7 @@ import time
 import uuid
 
 from flask import Blueprint, Response, g, jsonify, request, send_file
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
 
 from ..errors import ApiError
 from ..extensions import db
@@ -189,6 +189,124 @@ def _public_lecture(session, lecture_id: str) -> Lecture:
     if lecture is None:
         raise ApiError("Видео недоступно", 404, "lecture_not_found")
     return lecture
+
+
+# ------------------------------------------------------------ public groups
+def _public_group(session, group_id: str) -> VideoGroup:
+    group = session.query(VideoGroup).filter(VideoGroup.id == _uuid(group_id), VideoGroup.visibility == "public").first()
+    if group is None:
+        raise ApiError("Группа недоступна", 404, "group_not_found")
+    return group
+
+
+def _public_group_card(group: VideoGroup, owner_name: str, count: int, duration: float, exam_ready: bool) -> dict:
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description,
+        "owner_name": owner_name,
+        "video_count": count,
+        "duration_sec": round(duration or 0.0, 1),
+        "exam_ready": exam_ready,
+        "created_at": group.created_at.isoformat() if group.created_at else None,
+    }
+
+
+def _public_group_payload(session, group: VideoGroup) -> dict:
+    owner_name = session.query(User.name).filter(User.id == group.owner_id).scalar() or "Автор"
+    rows = session.query(Lecture).filter(Lecture.group_id == group.id, Lecture.status == "ready").order_by(Lecture.created_at.desc()).all()
+    items = []
+    duration = 0.0
+    for lecture in rows:
+        item = lecture_card(lecture)
+        item["thumbnail_url"] = f"/api/public/lectures/{lecture.id}/thumbnail" if lecture.thumbnail_path else None
+        items.append(item)
+        duration += lecture.duration_sec or 0.0
+    sheet = session.query(ExamSheet).filter(ExamSheet.group_id == group.id).first()
+    return {
+        "group": _public_group_card(group, owner_name, len(items), duration, sheet is not None),
+        "items": items,
+        "exam_ready": sheet is not None,
+    }
+
+
+@bp.get("/public/groups")
+def public_groups():
+    """Catalogue of public groups — the entry point to a group cheat sheet.
+
+    Only groups with at least one ready lecture are listed: an empty group has
+    nothing to open and nothing to build a sheet from.
+    """
+    session = db.session()
+    try:
+        rows = (
+            session.query(
+                VideoGroup,
+                User.name,
+                func.count(Lecture.id),
+                func.coalesce(func.sum(Lecture.duration_sec), 0.0),
+            )
+            .join(User, User.id == VideoGroup.owner_id)
+            .outerjoin(Lecture, and_(Lecture.group_id == VideoGroup.id, Lecture.status == "ready"))
+            .filter(VideoGroup.visibility == "public")
+            .group_by(VideoGroup.id, User.name)
+            .order_by(VideoGroup.created_at.desc())
+            .all()
+        )
+        rows = [row for row in rows if row[2]]
+        group_ids = [row[0].id for row in rows]
+        ready: set = set()
+        if group_ids:
+            ready = {group_id for (group_id,) in session.query(ExamSheet.group_id).filter(ExamSheet.group_id.in_(group_ids)).all()}
+        items = [
+            _public_group_card(group, owner_name, count, duration, group.id in ready)
+            for group, owner_name, count, duration in rows
+        ]
+        return jsonify({"items": items})
+    finally:
+        session.close()
+
+
+@bp.get("/public/groups/<group_id>")
+def public_group(group_id: str):
+    session = db.session()
+    try:
+        return jsonify(_public_group_payload(session, _public_group(session, group_id)))
+    finally:
+        session.close()
+
+
+@bp.get("/public/groups/<group_id>/exam")
+def public_group_exam(group_id: str):
+    session = db.session()
+    try:
+        return jsonify(_exam_payload(session, _public_group(session, group_id), can_generate=True))
+    finally:
+        session.close()
+
+
+@bp.post("/public/groups/<group_id>/exam")
+def build_public_group_exam(group_id: str):
+    # Public reads are anonymous by design, but building runs an LLM call:
+    # keep that behind authentication even though the group is open.
+    if g.user_id is None:
+        raise ApiError("Требуется вход", 401, "authentication_required")
+    data = request.get_json(silent=True) or {}
+    session = db.session()
+    try:
+        group = _public_group(session, group_id)
+        try:
+            result = build_exam_sheet(session, group, mode=data.get("mode"))
+        except ValueError:
+            raise ApiError(
+                "В группе пока нет готовых лекций — шпаргалку не из чего собрать.",
+                409,
+                "no_ready_lectures",
+            )
+        save_exam_sheet(session, group, result)
+        return jsonify(_exam_payload(session, group, can_generate=True))
+    finally:
+        session.close()
 
 
 def _shared_lecture(session, token: str) -> Lecture:

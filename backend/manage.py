@@ -22,7 +22,9 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models import Lecture  # noqa: E402
 from app.services.pipeline import get_pipeline  # noqa: E402
+from app.services.recommendations import recommendation_service  # noqa: E402
 from app.services.search import search_service  # noqa: E402
+from app.utils.text import canonical_label  # noqa: E402
 from app.utils.timefmt import format_timestamp  # noqa: E402
 
 
@@ -120,6 +122,51 @@ def cmd_stats(_args) -> int:
         session.close()
 
 
+def cmd_normalize_categories(_args) -> int:
+    """Rewrite stored subject/topic through ``canonical_label``.
+
+    Older rows were saved exactly as the model wrote them, so «математический
+    анализ» and «Математический анализ» showed up as two categories.  Running
+    this once is enough; new rows are normalised at write time.
+    """
+    app = create_app()
+    session = db.session()
+    try:
+        rows = (
+            session.query(Lecture)
+            .filter((Lecture.subject.isnot(None)) | (Lecture.topic.isnot(None)))
+            .all()
+        )
+        owners: set = set()
+        changed = 0
+        merges: dict[str, str] = {}
+        for lecture in rows:
+            subject = canonical_label(lecture.subject, 100)
+            topic = canonical_label(lecture.topic, 120)
+            if subject != lecture.subject or topic != lecture.topic:
+                if lecture.subject and subject != lecture.subject:
+                    merges[lecture.subject] = subject or "Другое"
+                lecture.subject = subject
+                lecture.topic = topic
+                changed += 1
+                if lecture.user_id:
+                    owners.add(lecture.user_id)
+        if not changed:
+            print("Категории уже в нормальной форме.")
+            return 0
+        session.commit()
+        print(f"Обновлено лекций: {changed}")
+        for old, new in sorted(merges.items()):
+            print(f"  «{old}» -> «{new}»")
+        for user_id in owners:
+            recommendation_service.rebuild_profile(session, user_id)
+        session.commit()
+        print(f"Профили интересов пересобраны: {len(owners)}")
+        return 0
+    finally:
+        session.close()
+
+
 def cmd_requeue(_args) -> int:
     app = create_app()
     runner = app.extensions["job_runner"]
@@ -136,6 +183,10 @@ def main() -> int:
     sub.add_parser("list", help="список лекций").set_defaults(func=cmd_list)
     sub.add_parser("stats", help="сводная статистика").set_defaults(func=cmd_stats)
     sub.add_parser("requeue", help="перезапустить незавершённые задачи").set_defaults(func=cmd_requeue)
+    sub.add_parser(
+        "normalize-categories",
+        help="привести автокатегории к единому виду",
+    ).set_defaults(func=cmd_normalize_categories)
 
     ingest = sub.add_parser("ingest", help="обработать локальный видеофайл")
     ingest.add_argument("path")

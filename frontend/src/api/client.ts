@@ -15,6 +15,8 @@ import type {
   SystemInfo,
   VideoGroup,
   RecommendationFeed,
+  PublicGroup,
+  PublicGroupDetail,
 } from "./types";
 
 export class ApiError extends Error {
@@ -151,6 +153,14 @@ export const api = {
       body: JSON.stringify(mode ? { mode } : {}),
     }),
   publicLectures: () => request<{ items: (LectureCard & { owner_name: string; group_name: string | null })[] }>("/api/public/lectures"),
+  publicGroups: () => request<{ items: PublicGroup[] }>("/api/public/groups"),
+  publicGroup: (id: string) => request<PublicGroupDetail>(`/api/public/groups/${id}`),
+  publicGroupExam: (id: string) => request<ExamSheet>(`/api/public/groups/${id}/exam`),
+  buildPublicGroupExam: (id: string, mode?: LlmMode) =>
+    request<ExamSheet>(`/api/public/groups/${id}/exam`, {
+      method: "POST",
+      body: JSON.stringify(mode ? { mode } : {}),
+    }),
   recommendations: (limit = 12) => request<RecommendationFeed>(`/api/recommendations?limit=${limit}`),
   recordPublicView: (id: string) =>
     request<{ tracked: boolean; view_count: number; first_view: boolean }>(`/api/public/lectures/${id}/view`, { method: "POST" }),

@@ -294,6 +294,23 @@ export interface PublicLecture extends LectureCard {
   recommendation?: RecommendationInfo;
 }
 
+export interface PublicGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  owner_name: string;
+  video_count: number;
+  duration_sec: number;
+  exam_ready: boolean;
+  created_at: string | null;
+}
+
+export interface PublicGroupDetail {
+  group: PublicGroup;
+  items: LectureCard[];
+  exam_ready: boolean;
+}
+
 export interface InterestChip {
   label: string;
   kind: "subject" | "topic" | "keyword";

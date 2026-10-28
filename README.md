@@ -329,6 +329,8 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 | `GET` | `/api/search?q=…` | семантический поиск (по лекции или курсу) |
 | `POST` | `/api/lectures/{id}/qa` | вопрос по лекции |
 | `GET` | `/api/public/lectures` | публичный каталог |
+| `GET` | `/api/public/groups` | публичные группы с видео и готовой шпаргалкой |
+| `GET` | `/api/public/groups/{id}/exam` | шпаргалка публичной группы для любого пользователя |
 | `GET`/`POST` | `/api/groups/{id}/exam` | шпаргалка к экзамену: чтение и пересборка |
 | `GET` | `/api/recommendations` | персональная лента «Для Вас» |
 | `POST` | `/api/public/lectures/{id}/view` | учёт просмотра и сигнал для рекомендаций |
@@ -344,6 +346,7 @@ REST + SSE, JSON. Полное описание с примерами — [docs/
 .venv\Scripts\python.exe backend\manage.py ingest videos_examples\пример_1.mp4 --title "Геометрия"
 .venv\Scripts\python.exe backend\manage.py list
 .venv\Scripts\python.exe backend\manage.py stats
+.venv\Scripts\python.exe backend\manage.py normalize-categories
 ```
 
 ---

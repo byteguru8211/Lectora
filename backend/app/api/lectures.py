@@ -29,6 +29,7 @@ from ..services.llm_modes import default_mode, normalize_mode
 from ..services.pipeline import STAGE_LABELS
 from ..services.search import search_service
 from ..services.storage import free_disk_gb
+from ..utils.text import canonical_label
 from . import get_lecture_or_404, job_runner, storage
 
 bp = Blueprint("lectures", __name__, url_prefix="/api/lectures")
@@ -155,9 +156,9 @@ def list_lectures():
         changed = False
         for row in rows:
             if row.status == "ready" and not row.subject:
-                row.subject = str((row.keywords or ["Другое"])[0]).strip().capitalize() or "Другое"
+                row.subject = canonical_label(str((row.keywords or ["Другое"])[0]), 100) or "Другое"
                 first_section = session.query(Section.title).filter(Section.lecture_id == row.id).order_by(Section.idx).first()
-                row.topic = first_section[0] if first_section else (row.title[:120] or None)
+                row.topic = canonical_label(first_section[0], 120) if first_section else canonical_label(row.title[:120], 120)
                 changed = True
         if changed:
             session.commit()
@@ -343,9 +344,9 @@ def update_lecture(lecture_id: str):
         if "description" in data:
             lecture.description = (data.get("description") or "").strip() or None
         if "subject" in data:
-            lecture.subject = (data.get("subject") or "").strip()[:100] or None
+            lecture.subject = canonical_label(data.get("subject"), 100)
         if "topic" in data:
-            lecture.topic = (data.get("topic") or "").strip()[:120] or None
+            lecture.topic = canonical_label(data.get("topic"), 120)
         if "visibility" in data:
             lecture.visibility = _parse_visibility(data.get("visibility"))
         if "group_id" in data:

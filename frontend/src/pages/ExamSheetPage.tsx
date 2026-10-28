@@ -12,11 +12,12 @@ const dateLabel = (value: string | null | undefined) =>
     ? new Date(value).toLocaleString("ru-RU", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })
     : null;
 
-function SourceLink({ source }: { source: ExamSource }) {
+function SourceLink({ source, publicMode }: { source: ExamSource; publicMode: boolean }) {
+  const base = publicMode ? `/public/lectures/${source.lecture_id}` : `/lectures/${source.lecture_id}`;
   return (
     <Link
       className="exam-source"
-      to={`/lectures/${source.lecture_id}?t=${Math.floor(source.start_sec)}`}
+      to={`${base}?t=${Math.floor(source.start_sec)}`}
       title="Открыть этот момент в лекции"
     >
       <ClockIcon size={12} />
@@ -26,7 +27,7 @@ function SourceLink({ source }: { source: ExamSource }) {
   );
 }
 
-export function ExamSheetPage() {
+export function ExamSheetPage({ publicMode = false }: { publicMode?: boolean }) {
   const { groupId = "" } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -39,7 +40,7 @@ export function ExamSheetPage() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await api.groupExam(groupId);
+      const data = publicMode ? await api.publicGroupExam(groupId) : await api.groupExam(groupId);
       setSheet(data);
       setMode(data.mode_hint);
       setError(null);
@@ -48,7 +49,7 @@ export function ExamSheetPage() {
     } finally {
       setLoading(false);
     }
-  }, [groupId]);
+  }, [groupId, publicMode]);
 
   useEffect(() => {
     void load();
@@ -57,7 +58,9 @@ export function ExamSheetPage() {
   const build = async () => {
     setBuilding(true);
     try {
-      const data = await api.buildGroupExam(groupId, mode);
+      const data = publicMode
+        ? await api.buildPublicGroupExam(groupId, mode)
+        : await api.buildGroupExam(groupId, mode);
       setSheet(data);
       toast.success("Шпаргалка готова");
       setError(null);
@@ -75,23 +78,28 @@ export function ExamSheetPage() {
   return (
     <div className="exam-page">
       <div className="exam-toolbar no-print">
-        <button className="btn btn--ghost btn--sm" onClick={() => navigate("/account")}>
-          <ArrowLeftIcon size={14} /> К группам
+        <button
+          className="btn btn--ghost btn--sm"
+          onClick={() => navigate(publicMode ? `/public/groups/${groupId}` : "/account")}
+        >
+          <ArrowLeftIcon size={14} /> {publicMode ? "К группе" : "К группам"}
         </button>
         <div className="exam-toolbar__actions">
-          <label className="exam-mode">
-            <span>Режим</span>
-            <select
-              className="select"
-              value={mode}
-              disabled={building}
-              onChange={(event) => setMode(event.target.value as LlmMode)}
-            >
-              {LLM_MODES.map((item) => (
-                <option key={item} value={item}>{LLM_MODE_META[item].label}</option>
-              ))}
-            </select>
-          </label>
+          {!publicMode && (
+            <label className="exam-mode">
+              <span>Режим</span>
+              <select
+                className="select"
+                value={mode}
+                disabled={building}
+                onChange={(event) => setMode(event.target.value as LlmMode)}
+              >
+                {LLM_MODES.map((item) => (
+                  <option key={item} value={item}>{LLM_MODE_META[item].label}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {ready && (
             <button className="btn" onClick={() => window.print()}>
               <BookIcon size={15} /> Печать / PDF
@@ -194,7 +202,7 @@ export function ExamSheetPage() {
                       <h3><InlineText text={ticket.question} /></h3>
                     </div>
                     <RichText text={ticket.answer} className="exam-ticket__answer" />
-                    <SourceLink source={ticket} />
+                    <SourceLink source={ticket} publicMode={publicMode} />
                   </li>
                 ))}
               </ol>
@@ -213,7 +221,7 @@ export function ExamSheetPage() {
                   <article key={`${item.term}-${index}`} className="exam-definition">
                     <h3><InlineText text={item.term} /></h3>
                     <RichText text={item.definition} />
-                    <SourceLink source={item} />
+                    <SourceLink source={item} publicMode={publicMode} />
                   </article>
                 ))}
               </div>
@@ -232,7 +240,7 @@ export function ExamSheetPage() {
                   <article key={`${item.formula}-${index}`} className="exam-formula">
                     <MathFormula tex={item.formula} block />
                     {item.meaning && <p><InlineText text={item.meaning} /></p>}
-                    <SourceLink source={item} />
+                    <SourceLink source={item} publicMode={publicMode} />
                   </article>
                 ))}
               </div>
