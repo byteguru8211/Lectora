@@ -401,6 +401,7 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
                 sourceLanguage={lecture.language}
                 targetLanguage={lecture.target_language}
                 voiceoverUrl={lecture.voiceover_url}
+                voiceoverAligned={lecture.voiceover_aligned}
                 sections={lecture.sections}
                 currentTime={currentTime}
                 seekRequest={seekRequest}

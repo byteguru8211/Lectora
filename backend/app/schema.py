@@ -48,6 +48,8 @@ MIGRATIONS = (
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS voiceover_enabled BOOLEAN NOT NULL DEFAULT FALSE",
     "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS voiceover_path VARCHAR(512)",
     "ALTER TABLE transcript_segments ADD COLUMN IF NOT EXISTS translated_text TEXT",
+    # 1.7.0: narration aligned to transcript timecodes
+    "ALTER TABLE lectures ADD COLUMN IF NOT EXISTS voiceover_aligned BOOLEAN NOT NULL DEFAULT FALSE",
 )
 
 

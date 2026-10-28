@@ -663,7 +663,12 @@ def voiceover(lecture_id: str):
         path = storage().path_for(lecture.voiceover_path)
         if path is None or not path.is_file():
             raise ApiError("Озвучка недоступна", 404, "voiceover_missing")
-        return send_file(path, mimetype="audio/mpeg", conditional=True, etag=True, max_age=3600)
+        # The track is rebuilt in place (realignment, reprocessing), so the
+        # browser must revalidate against the ETag instead of trusting a
+        # long-lived copy.
+        response = send_file(path, mimetype="audio/mpeg", conditional=True, etag=True, max_age=0)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
     finally:
         session.close()
 

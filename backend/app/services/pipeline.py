@@ -342,13 +342,19 @@ class Pipeline:
             self._store_notes(session, lecture, notes)
 
             if lecture.voiceover_enabled and lecture.target_language and any(translations):
-                progress.update("voiceover", 96.0, force=True)
-                voice_path = translation_service.synthesize(
-                    " ".join(item for item in translations if item),
+                progress.update("voiceover", 95.0, force=True)
+                voice_path = translation_service.synthesize_timed(
+                    [
+                        (segment.start_sec, segment.end_sec, translated)
+                        for segment, translated in zip(segments, translations)
+                    ],
+                    duration,
                     media_dir / f"voiceover-{lecture.target_language}.mp3",
                     lecture.target_language,
+                    on_progress=lambda ratio: progress.update("voiceover", 95.0 + 4.0 * ratio),
                 )
                 lecture.voiceover_path = self.storage.relative(voice_path)
+                lecture.voiceover_aligned = True
 
             progress.update("finalize", 98.0, force=True)
             lecture.status = "ready"

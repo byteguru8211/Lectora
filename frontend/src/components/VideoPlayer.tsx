@@ -13,6 +13,7 @@ interface Props {
   sourceLanguage?: "ru" | "en";
   targetLanguage?: "ru" | "en" | null;
   voiceoverUrl?: string | null;
+  voiceoverAligned?: boolean;
   sections: Section[];
   currentTime: number;
   seekRequest: { sec: number; nonce: number } | null;
@@ -28,6 +29,7 @@ export function VideoPlayer({
   sourceLanguage = "ru",
   targetLanguage = null,
   voiceoverUrl = null,
+  voiceoverAligned = false,
   sections,
   currentTime,
   seekRequest,
@@ -41,6 +43,7 @@ export function VideoPlayer({
   const audioRef = useRef<HTMLAudioElement>(null);
   const voiceRef = useRef(false);
   const narrationRateRef = useRef(1);
+  const alignedRef = useRef(false);
   const audioContextRef = useRef<AudioContext | null>(null);
   const originalGainRef = useRef<GainNode | null>(null);
   const timeRef = useRef(onTime);
@@ -59,6 +62,7 @@ export function VideoPlayer({
   // the Plyr instance (and the player would reset on each timeupdate).
   timeRef.current = onTime;
   durationRef.current = onDuration;
+  alignedRef.current = voiceoverAligned;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -85,15 +89,26 @@ export function VideoPlayer({
     const syncNarration = (force = false) => {
       const audio = audioRef.current;
       if (!voiceRef.current || !audio) return;
-      const target = player.currentTime * narrationRateRef.current;
-      // Small drift is normal for two media elements. Correcting it every
-      // frame can seek the narration backwards and repeat words.
-      if (force || Math.abs(audio.currentTime - target) > 2.5) audio.currentTime = target;
+      // Narration cut by transcript timecodes maps 1:1 onto video seconds.
+      // Legacy tracks are a single continuous mp3 without the original pauses,
+      // so they can only be stretched over the whole duration.
+      const aligned = alignedRef.current;
+      const target = aligned ? player.currentTime : player.currentTime * narrationRateRef.current;
+      // Correcting continuously would seek the narration backwards and repeat
+      // words; a sub-second drift is inaudible.
+      const tolerance = aligned ? 0.45 : 2.5;
+      if (force || Math.abs(audio.currentTime - target) > tolerance) audio.currentTime = target;
     };
     const handleTime = () => { timeRef.current(player.currentTime); syncNarration(false); };
     const handleSeek = () => { timeRef.current(player.currentTime); syncNarration(true); };
     const handlePlay = () => { setPaused(false); if (voiceRef.current) void audioRef.current?.play().catch(() => undefined); };
     const handlePause = () => { setPaused(true); audioRef.current?.pause(); };
+    const handleWaiting = () => { audioRef.current?.pause(); };
+    const handlePlaying = () => {
+      if (!voiceRef.current) return;
+      syncNarration(false);
+      void audioRef.current?.play().catch(() => undefined);
+    };
     const handleVolume = () => {
       if (audioRef.current) audioRef.current.volume = player.muted ? 0 : player.volume;
     };
@@ -107,6 +122,8 @@ export function VideoPlayer({
     player.on("loadedmetadata", handleLoaded);
     player.on("seeked", handleSeek);
     player.on("play", handlePlay);
+    player.on("playing", handlePlaying);
+    player.on("waiting", handleWaiting);
     player.on("pause", handlePause);
     player.on("ended", handlePause);
     player.on("volumechange", handleVolume);
@@ -116,6 +133,8 @@ export function VideoPlayer({
       player.off("loadedmetadata", handleLoaded);
       player.off("seeked", handleSeek);
       player.off("play", handlePlay);
+      player.off("playing", handlePlaying);
+      player.off("waiting", handleWaiting);
       player.off("pause", handlePause);
       player.off("ended", handlePause);
       player.off("volumechange", handleVolume);
@@ -142,16 +161,21 @@ export function VideoPlayer({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !voiceoverUrl) return;
-    const fitNarration = () => {
-      const videoDuration = playerRef.current?.duration || 0;
-      if (videoDuration > 0 && audio.duration > 0) {
-        narrationRateRef.current = Math.max(0.5, Math.min(2, audio.duration / videoDuration));
-        audio.playbackRate = Math.max(0.5, Math.min(2, narrationRateRef.current * playbackSpeed));
+    const configure = () => {
+      if (voiceoverAligned) {
+        narrationRateRef.current = 1;
+      } else {
+        const videoDuration = playerRef.current?.duration || 0;
+        if (videoDuration > 0 && audio.duration > 0) {
+          narrationRateRef.current = Math.max(0.5, Math.min(2, audio.duration / videoDuration));
+        }
       }
+      audio.playbackRate = Math.max(0.5, Math.min(2, narrationRateRef.current * playbackSpeed));
     };
-    audio.addEventListener("loadedmetadata", fitNarration);
-    return () => audio.removeEventListener("loadedmetadata", fitNarration);
-  }, [voiceoverUrl, playbackSpeed]);
+    configure();
+    audio.addEventListener("loadedmetadata", configure);
+    return () => audio.removeEventListener("loadedmetadata", configure);
+  }, [voiceoverUrl, voiceoverAligned, playbackSpeed]);
 
   // Chapter separators on Plyr's progress bar (YouTube-like ticks).
   useEffect(() => {

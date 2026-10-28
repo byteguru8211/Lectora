@@ -54,6 +54,7 @@ export interface LectureCard {
   language: "ru" | "en";
   target_language: "ru" | "en" | null;
   voiceover_enabled: boolean;
+  voiceover_aligned: boolean;
   segment_count: number;
   chunk_count: number;
   word_count: number;

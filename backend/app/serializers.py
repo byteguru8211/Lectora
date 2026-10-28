@@ -43,6 +43,7 @@ def lecture_card(lecture: Lecture) -> dict:
         "language": lecture.language,
         "target_language": lecture.target_language,
         "voiceover_enabled": bool(lecture.voiceover_enabled),
+        "voiceover_aligned": bool(lecture.voiceover_aligned),
         "segment_count": lecture.segment_count,
         "chunk_count": lecture.chunk_count,
         "word_count": lecture.word_count,

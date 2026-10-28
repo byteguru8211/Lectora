@@ -92,6 +92,9 @@ class Lecture(Base):
     target_language: Mapped[str | None] = mapped_column(String(8))
     voiceover_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     voiceover_path: Mapped[str | None] = mapped_column(String(512))
+    # True when the narration is cut by transcript timecodes (pauses preserved),
+    # so the track plays 1:1 with the video instead of being stretched.
+    voiceover_aligned: Mapped[bool] = mapped_column(Boolean, default=False)
     asr_profile: Mapped[str] = mapped_column(String(16), default="accurate")
     asr_engine: Mapped[str] = mapped_column(String(16), default="vosk")
     use_gpu: Mapped[bool] = mapped_column(Boolean, default=False)

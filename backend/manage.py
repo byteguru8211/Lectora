@@ -12,6 +12,7 @@ import argparse
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -20,10 +21,11 @@ os.environ.setdefault("WARMUP", "0")
 
 from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
-from app.models import Lecture  # noqa: E402
+from app.models import Lecture, TranscriptSegment  # noqa: E402
 from app.services.pipeline import get_pipeline  # noqa: E402
 from app.services.recommendations import recommendation_service  # noqa: E402
 from app.services.search import search_service  # noqa: E402
+from app.services.translation import translation_service  # noqa: E402
 from app.utils.text import canonical_label  # noqa: E402
 from app.utils.timefmt import format_timestamp  # noqa: E402
 
@@ -175,6 +177,59 @@ def cmd_requeue(_args) -> int:
     return 0
 
 
+def cmd_realign_voiceovers(args) -> int:
+    """Rebuild narration tracks cut by transcript timecodes.
+
+    Tracks produced before 1.7.0 are one continuous mp3: silences of the
+    original video are missing, so narration drifts after every pause. The
+    transcript keeps the translated text, so the track can be rebuilt without
+    running ASR again.
+    """
+    app = create_app()
+    storage = app.extensions["storage"]
+    session = db.session()
+    try:
+        query = session.query(Lecture).filter(Lecture.voiceover_path.isnot(None))
+        if args.id:
+            query = query.filter(Lecture.id == uuid.UUID(args.id))
+        else:
+            query = query.filter(Lecture.voiceover_aligned.is_(False))
+        rows = query.order_by(Lecture.created_at.asc()).all()
+        if not rows:
+            print("Все дорожки уже выровнены по таймкодам.")
+            return 0
+        done = 0
+        for lecture in rows:
+            segments = (
+                session.query(TranscriptSegment)
+                .filter(TranscriptSegment.lecture_id == lecture.id)
+                .order_by(TranscriptSegment.idx)
+                .all()
+            )
+            if not lecture.target_language or not any(segment.translated_text for segment in segments):
+                print(f"Пропуск {lecture.id}: нет переведённого транскрипта")
+                continue
+            media_dir = Path(storage.lecture_dir(lecture.storage_key))
+            target = media_dir / f"voiceover-{lecture.target_language}.mp3"
+            print(f"Озвучка {lecture.id}: {lecture.title}…")
+            started = time.perf_counter()
+            translation_service.synthesize_timed(
+                [(segment.start_sec, segment.end_sec, segment.translated_text or "") for segment in segments],
+                float(lecture.duration_sec or 0.0),
+                target,
+                lecture.target_language,
+            )
+            lecture.voiceover_path = storage.relative(target)
+            lecture.voiceover_aligned = True
+            session.commit()
+            done += 1
+            print(f"  готово за {time.perf_counter() - started:.0f} c")
+        print(f"Выровнено дорожек: {done}")
+        return 0
+    finally:
+        session.close()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Lectora CLI")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -187,6 +242,12 @@ def main() -> int:
         "normalize-categories",
         help="привести автокатегории к единому виду",
     ).set_defaults(func=cmd_normalize_categories)
+    realign = sub.add_parser(
+        "realign-voiceovers",
+        help="пересобрать озвучку с паузами по таймкодам",
+    )
+    realign.add_argument("--id", default=None, help="только одна лекция")
+    realign.set_defaults(func=cmd_realign_voiceovers)
 
     ingest = sub.add_parser("ingest", help="обработать локальный видеофайл")
     ingest.add_argument("path")
