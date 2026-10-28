@@ -3,11 +3,11 @@ import { Link } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { ArrowLeftIcon, CheckIcon, SparkIcon, UserIcon } from "../components/icons";
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, SparkIcon, UserIcon } from "../components/icons";
 import { formatDate } from "../utils/format";
 
 export function AccountSettingsPage() {
-  const { user, updateName } = useAuth();
+  const { user, updateName, logout } = useAuth();
   const toast = useToast();
 
   const [name, setName] = useState(user?.name ?? "");
@@ -206,6 +206,23 @@ export function AccountSettingsPage() {
             </button>
           </div>
         </form>
+
+        <section className="card card--pad settings-card">
+          <div className="settings-card__head">
+            <span className="settings-card__icon">
+              <ArrowRightIcon size={17} />
+            </span>
+            <div>
+              <strong>Сессия</strong>
+              <p className="small muted">Завершите вход на этом устройстве.</p>
+            </div>
+          </div>
+          <div className="settings-actions">
+            <button className="btn btn--ghost" type="button" onClick={() => void logout()}>
+              Выйти из аккаунта
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   );

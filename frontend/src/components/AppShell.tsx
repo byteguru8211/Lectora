@@ -1,7 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { useUi } from "../context/UiContext";
 import { useTheme } from "../hooks/useTheme";
-import { LogoMark, MoonIcon, SearchIcon, SunIcon, UploadIcon, UserIcon } from "./icons";
+import { BookIcon, FolderIcon, LogoMark, MoonIcon, SearchIcon, SunIcon, UploadIcon, UserIcon } from "./icons";
 import { useAuth } from "../context/AuthContext";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -68,9 +68,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button className="icon-btn" onClick={toggle} aria-label="Сменить тему" title="Светлая / тёмная тема">
               {theme === "dark" ? <SunIcon size={17} /> : <MoonIcon size={17} />}
             </button>
-            <button className="btn btn--primary" onClick={() => ui.openUpload()}>
+            <button className="btn btn--primary" onClick={() => ui.openUpload()} aria-label="Загрузить видео">
               <UploadIcon size={16} />
-              Загрузить
+              <span className="btn__label">Загрузить</span>
             </button>
             <button className="btn btn--ghost logout-btn" onClick={() => void auth.logout()}>Выйти</button>
           </div>
@@ -80,6 +80,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="main">
         <div className="container">{children}</div>
       </main>
+
+      <nav className="mobile-nav" aria-label="Основная навигация">
+        <NavLink to="/" end className={({ isActive }) => `mobile-nav__item ${isActive ? "is-active" : ""}`}>
+          <BookIcon size={19} />
+          <span>Библиотека</span>
+        </NavLink>
+        <NavLink to="/account" className={({ isActive }) => `mobile-nav__item ${isActive ? "is-active" : ""}`}>
+          <UserIcon size={19} />
+          <span>Кабинет</span>
+        </NavLink>
+        <NavLink to="/public" className={({ isActive }) => `mobile-nav__item ${isActive ? "is-active" : ""}`}>
+          <FolderIcon size={19} />
+          <span>Публичные</span>
+        </NavLink>
+        <button className="mobile-nav__item" onClick={() => ui.openPalette()}>
+          <SearchIcon size={19} />
+          <span>Поиск</span>
+        </button>
+      </nav>
     </div>
   );
 }
