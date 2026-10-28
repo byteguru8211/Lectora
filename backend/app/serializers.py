@@ -69,6 +69,7 @@ def lecture_detail(lecture: Lecture, sections: Iterable[Section] | None = None) 
             "sections": [section_dict(section) for section in (sections or [])],
             "media_url": f"/api/lectures/{lecture.id}/media",
             "subtitles_url": f"/api/lectures/{lecture.id}/subtitles.vtt",
+            "subtitles_srt_url": f"/api/lectures/{lecture.id}/subtitles.srt",
             "voiceover_url": f"/api/lectures/{lecture.id}/voiceover" if lecture.voiceover_path else None,
             "created_at": iso(lecture.created_at),
             "updated_at": iso(lecture.updated_at),

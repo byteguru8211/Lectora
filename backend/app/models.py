@@ -222,6 +222,45 @@ class Section(Base):
     lecture: Mapped[Lecture] = relationship(back_populates="sections")
 
 
+class ExamSheet(Base):
+    """A cached exam cheat sheet for a group, merged from ready lecture notes.
+
+    One row per group: regeneration replaces it in place, and the fingerprint
+    tells the client whether the underlying notes changed since then.
+    """
+
+    __tablename__ = "exam_sheets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("video_groups.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    lecture_ids: Mapped[list] = mapped_column(JSONB, default=list)
+    lecture_count: Mapped[int] = mapped_column(Integer, default=0)
+    tickets: Mapped[list] = mapped_column(JSONB, default=list)
+    definitions: Mapped[list] = mapped_column(JSONB, default=list)
+    formulas: Mapped[list] = mapped_column(JSONB, default=list)
+    cheatsheet_md: Mapped[str | None] = mapped_column(Text)
+    llm_mode: Mapped[str] = mapped_column(String(16), default="local", nullable=False)
+    llm_mode_used: Mapped[str | None] = mapped_column(String(16))
+    llm_model: Mapped[str | None] = mapped_column(String(120))
+    generation_ms: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class Job(Base):
     """Crash-safe unit of background work (one per lecture processing)."""
 

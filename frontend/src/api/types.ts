@@ -98,8 +98,50 @@ export interface LectureDetail extends LectureCard {
   questions: string[];
   media_url: string;
   subtitles_url: string;
+  subtitles_srt_url: string;
   voiceover_url: string | null;
   updated_at: string | null;
+}
+
+export interface ExamSource {
+  lecture_id: string;
+  lecture_title: string;
+  start_sec: number;
+  timestamp: string;
+}
+
+export interface ExamTicket extends ExamSource {
+  question: string;
+  answer: string;
+}
+
+export interface ExamDefinition extends ExamSource {
+  term: string;
+  definition: string;
+}
+
+export interface ExamFormula extends ExamSource {
+  formula: string;
+  meaning: string;
+}
+
+export interface ExamSheet {
+  status: "missing" | "ready";
+  stale: boolean;
+  lecture_count: number;
+  current_lecture_count?: number;
+  tickets: ExamTicket[];
+  definitions: ExamDefinition[];
+  formulas: ExamFormula[];
+  cheatsheet_md: string;
+  llm_mode?: LlmMode;
+  llm_mode_used?: NotesModeUsed | null;
+  llm_model?: string | null;
+  generation_ms?: number | null;
+  generated_at?: string | null;
+  group: VideoGroup;
+  can_generate: boolean;
+  mode_hint: LlmMode;
 }
 
 export interface Segment {

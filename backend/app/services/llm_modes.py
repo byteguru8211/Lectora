@@ -77,6 +77,8 @@ def default_mode() -> str:
 
 def client_for(mode: str):
     """Return the backend instance for a mode, or ``None`` for ``offline``."""
+    if (mode or "").strip().lower() == MODE_OFFLINE:
+        return None
     mode = normalize_mode(mode)
     if mode == MODE_API:
         return api_llm

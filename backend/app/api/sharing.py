@@ -11,8 +11,15 @@ from sqlalchemy import func, or_
 
 from ..errors import ApiError
 from ..extensions import db
-from ..models import Lecture, Section, TranscriptSegment, User, VideoGroup
+from ..models import ExamSheet, Lecture, Section, TranscriptSegment, User, VideoGroup
 from ..serializers import lecture_card, lecture_detail, segment_dict
+from ..services.exam import (
+    build_exam_sheet,
+    current_fingerprint,
+    group_mode_hint,
+    save_exam_sheet,
+    sheet_payload,
+)
 from ..services.qa import qa_service
 from ..services.search import search_service
 from . import storage
@@ -90,6 +97,48 @@ def update_group(group_id: str):
         session.close()
 
 
+def _exam_payload(session, group: VideoGroup, *, can_generate: bool) -> dict:
+    fingerprint, count = current_fingerprint(session, group)
+    sheet = session.query(ExamSheet).filter(ExamSheet.group_id == group.id).first()
+    payload = sheet_payload(sheet, fingerprint=fingerprint, lecture_count=count)
+    payload.update(
+        group=_group_dict(group, count),
+        can_generate=can_generate and count > 0,
+        mode_hint=group_mode_hint(session, group),
+    )
+    return payload
+
+
+@bp.get("/groups/<group_id>/exam")
+def get_group_exam(group_id: str):
+    session = db.session()
+    try:
+        group = _owned_group(session, group_id)
+        return jsonify(_exam_payload(session, group, can_generate=True))
+    finally:
+        session.close()
+
+
+@bp.post("/groups/<group_id>/exam")
+def build_group_exam(group_id: str):
+    data = request.get_json(silent=True) or {}
+    session = db.session()
+    try:
+        group = _owned_group(session, group_id)
+        try:
+            result = build_exam_sheet(session, group, mode=data.get("mode"))
+        except ValueError:
+            raise ApiError(
+                "В группе пока нет готовых лекций — шпаргалку не из чего собрать.",
+                409,
+                "no_ready_lectures",
+            )
+        save_exam_sheet(session, group, result)
+        return jsonify(_exam_payload(session, group, can_generate=True))
+    finally:
+        session.close()
+
+
 @bp.post("/groups/<group_id>/share")
 def share_group(group_id: str):
     session = db.session()
@@ -155,6 +204,7 @@ def _detail(session, lecture: Lecture, media_url: str) -> dict:
     data["media_url"] = media_url
     data["thumbnail_url"] = f"{media_url.rsplit('/media', 1)[0]}/thumbnail" if lecture.thumbnail_path else None
     data["subtitles_url"] = f"{media_url.rsplit('/media', 1)[0]}/subtitles.vtt"
+    data["subtitles_srt_url"] = f"{media_url.rsplit('/media', 1)[0]}/subtitles.srt"
     data["voiceover_url"] = f"{media_url.rsplit('/media', 1)[0]}/voiceover" if lecture.voiceover_path else None
     return data
 
@@ -199,17 +249,25 @@ def _ask(session, lecture: Lecture):
     })
 
 
-def _subtitles(session, lecture: Lecture):
-    from ..utils.timefmt import vtt_time
+def _subtitles(session, lecture: Lecture, fmt: str = "vtt"):
+    from ..utils.subtitles import build_subtitles
+
     rows = session.query(TranscriptSegment).filter(TranscriptSegment.lecture_id == lecture.id).order_by(TranscriptSegment.idx).all()
-    lines = ["WEBVTT", ""]
     requested = (request.args.get("lang") or lecture.language).lower()
     if requested not in {lecture.language, lecture.target_language}:
         raise ApiError("Субтитры на этом языке недоступны", 404, "subtitles_unavailable")
-    for row in rows:
-        value = row.translated_text if requested == lecture.target_language else row.text
-        lines.extend([f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}", (value or row.text).replace("-->", "->"), ""])
-    return Response("\n".join(lines), mimetype="text/vtt", headers={"Cache-Control": "public, max-age=300"})
+    body = build_subtitles(
+        rows,
+        language=lecture.language,
+        target_language=lecture.target_language,
+        requested=requested,
+        fmt=fmt,
+    )
+    return Response(
+        body,
+        mimetype="text/vtt" if fmt == "vtt" else "application/x-subrip",
+        headers={"Cache-Control": "public, max-age=300"},
+    )
 
 
 def _voiceover(lecture: Lecture):
@@ -278,6 +336,13 @@ def public_subtitles(lecture_id: str):
     finally: session.close()
 
 
+@bp.get("/public/lectures/<lecture_id>/subtitles.srt")
+def public_subtitles_srt(lecture_id: str):
+    session = db.session()
+    try: return _subtitles(session, _public_lecture(session, lecture_id), "srt")
+    finally: session.close()
+
+
 @bp.get("/public/lectures/<lecture_id>/voiceover")
 def public_voiceover(lecture_id: str):
     session = db.session()
@@ -334,6 +399,13 @@ def shared_video_subtitles(token: str):
     finally: session.close()
 
 
+@bp.get("/shared/videos/<token>/subtitles.srt")
+def shared_video_subtitles_srt(token: str):
+    session = db.session()
+    try: return _subtitles(session, _shared_lecture(session, token), "srt")
+    finally: session.close()
+
+
 @bp.get("/shared/videos/<token>/voiceover")
 def shared_video_voiceover(token: str):
     session = db.session()
@@ -351,6 +423,18 @@ def shared_group(token: str):
         items = [lecture_card(item) | {"thumbnail_url": None} for item in lectures]
         return jsonify({"group": _group_dict(group, len(items)), "items": items})
     finally: session.close()
+
+
+@bp.get("/shared/groups/<token>/exam")
+def shared_group_exam(token: str):
+    session = db.session()
+    try:
+        group = session.query(VideoGroup).filter(VideoGroup.share_token == token).first()
+        if group is None:
+            raise ApiError("Ссылка недействительна", 404, "share_not_found")
+        return jsonify(_exam_payload(session, group, can_generate=False))
+    finally:
+        session.close()
 
 
 @bp.get("/shared/groups/<token>/lectures/<lecture_id>")
@@ -402,6 +486,13 @@ def shared_group_qa(token: str, lecture_id: str):
 def shared_group_subtitles(token: str, lecture_id: str):
     session = db.session()
     try: return _subtitles(session, _group_lecture(session, token, lecture_id))
+    finally: session.close()
+
+
+@bp.get("/shared/groups/<token>/lectures/<lecture_id>/subtitles.srt")
+def shared_group_subtitles_srt(token: str, lecture_id: str):
+    session = db.session()
+    try: return _subtitles(session, _group_lecture(session, token, lecture_id), "srt")
     finally: session.close()
 
 

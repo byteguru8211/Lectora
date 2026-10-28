@@ -390,6 +390,9 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
                   <a className="chip chip--button" href={`${lecture.subtitles_url}?lang=${lecture.language}`} download={`lecture-${lecture.language}.vtt`}>
                     <DownloadIcon size={12} /> субтитры {lecture.language.toUpperCase()}
                   </a>
+                  <a className="chip chip--button" href={`${lecture.subtitles_srt_url}?lang=${lecture.language}`} download={`lecture-${lecture.language}.srt`}>
+                    <DownloadIcon size={12} /> SRT
+                  </a>
                   {lecture.target_language && <a className="chip chip--button" href={`${lecture.subtitles_url}?lang=${lecture.target_language}`} download={`lecture-${lecture.target_language}.vtt`}><DownloadIcon size={12} /> субтитры {lecture.target_language.toUpperCase()}</a>}
                   <span className="player-toolbar__time">
                     <strong>{formatClock(currentTime)}</strong> / {formatClock(duration || lecture.duration_sec)}

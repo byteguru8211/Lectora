@@ -2063,9 +2063,18 @@ mark {
 .rich-text ol {
   margin: 0 0 9px;
   padding-left: 19px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+}
+
+.rich-text ul {
+  list-style: disc;
+}
+
+.rich-text ol {
+  list-style: decimal;
+}
+
+.rich-text li + li {
+  margin-top: 4px;
 }
 
 .rich-text li::marker {
@@ -2087,4 +2096,481 @@ mark {
 
 .rich-text .rt-formula {
   color: var(--accent-2);
+}
+
+/* ---------- formulas and semantic blocks ---------- */
+.rt-math {
+  display: inline-flex;
+  max-width: 100%;
+  vertical-align: baseline;
+}
+
+.rt-math--block {
+  display: block;
+  margin: 10px 0;
+  padding: 4px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.rt-math .katex {
+  font-size: 1.02em;
+  color: var(--text);
+}
+
+.rt-math--block .katex {
+  font-size: 1.08em;
+}
+
+.rt-math .katex-display {
+  margin: 0;
+}
+
+.rt-note {
+  margin: 10px 0;
+  padding: 10px 12px 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 10px 10px 0;
+  background: var(--surface-2);
+}
+
+.rt-note__label {
+  display: inline-block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+
+.rt-note__body {
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.rt-note--definition {
+  border-color: var(--accent-2);
+  background: rgba(34, 211, 238, 0.07);
+}
+
+.rt-note--theorem {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.rt-note--example {
+  border-color: var(--success);
+  background: rgba(52, 211, 153, 0.08);
+}
+
+.rt-note--example .rt-note__label {
+  color: var(--success);
+}
+
+.rt-note--warning {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.rt-note--warning .rt-note__label {
+  color: var(--amber);
+}
+
+.rt-note--formula {
+  border-color: var(--accent-2);
+}
+
+/* ---------- exam cheat sheet ---------- */
+.exam-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 4px 0 70px;
+}
+
+.exam-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.exam-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.exam-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.exam-mode .select {
+  min-width: 164px;
+}
+
+.exam-hero {
+  position: relative;
+  padding: 26px 28px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(120% 140% at 0% 0%, var(--accent-soft), transparent 55%),
+    var(--surface);
+}
+
+.exam-hero__eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent-2);
+}
+
+.exam-hero h1 {
+  margin: 9px 0 6px;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.15;
+}
+
+.exam-hero p {
+  max-width: 700px;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.exam-hero__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.exam-stale {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: var(--amber-soft);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.exam-building {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.exam-building p {
+  margin: 6px 0 0;
+}
+
+.exam-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.exam-section h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 13px;
+  font-size: 18px;
+}
+
+.exam-section__index {
+  padding: 2px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--accent-2);
+}
+
+.exam-section__count {
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.exam-tickets {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.exam-ticket {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.exam-ticket__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.exam-ticket__num {
+  padding-top: 2px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--accent);
+}
+
+.exam-ticket h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.exam-ticket__answer {
+  margin: 9px 0 11px;
+  color: var(--text-soft);
+  font-size: 13.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.exam-definitions,
+.exam-formulas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 12px;
+}
+
+.exam-definition,
+.exam-formula {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.exam-definition h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--accent-2);
+}
+
+.exam-definition p,
+.exam-formula p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.exam-formula .rt-math--block {
+  margin: 0;
+  font-size: 1.02rem;
+}
+
+.exam-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.exam-source span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exam-source b {
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.exam-source:hover {
+  color: var(--text);
+  border-color: var(--accent-2);
+}
+
+.exam-section--sheet .card {
+  background: var(--surface);
+}
+
+.exam-cheatsheet h4 {
+  margin: 20px 0 8px;
+  font-size: 15px;
+  color: var(--accent-2);
+}
+
+.exam-cheatsheet h4:first-child {
+  margin-top: 0;
+}
+
+.exam-cheatsheet h5 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+}
+
+.exam-cheatsheet p,
+.exam-cheatsheet li {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+@media (max-width: 720px) {
+  .exam-hero {
+    padding: 20px;
+  }
+
+  .exam-toolbar,
+  .exam-toolbar__actions {
+    width: 100%;
+  }
+
+  .exam-toolbar__actions .btn {
+    flex: 1;
+  }
+}
+
+@media print {
+  @page {
+    margin: 14mm;
+  }
+
+  .header,
+  .no-print,
+  .footer,
+  .shared-brand {
+    display: none !important;
+  }
+
+  body,
+  .page,
+  .main {
+    background: #fff !important;
+    color: #111 !important;
+  }
+
+  .main {
+    padding: 0 !important;
+  }
+
+  .container {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .exam-page {
+    padding: 0;
+    gap: 14px;
+  }
+
+  .exam-hero {
+    padding: 0 0 10px;
+    border: none;
+    background: none;
+    box-shadow: none;
+  }
+
+  .exam-hero p,
+  .exam-ticket__answer,
+  .exam-definition p,
+  .exam-formula p,
+  .exam-cheatsheet p,
+  .exam-cheatsheet li,
+  .rt-note__body {
+    color: #222 !important;
+  }
+
+  .exam-hero__eyebrow,
+  .exam-definition h3,
+  .exam-cheatsheet h4,
+  .exam-section__index,
+  .exam-ticket__num,
+  .rt-note__label {
+    color: #111 !important;
+  }
+
+  .exam-ticket,
+  .exam-definition,
+  .exam-formula,
+  .rt-note {
+    border-color: #ccc !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+
+  /* The full cheat sheet spans several pages, so it must break normally. */
+  .exam-section--sheet .card {
+    border-color: #ccc !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+
+  .exam-source {
+    padding: 0;
+    border: none;
+    color: #555 !important;
+  }
+
+  .exam-source b {
+    color: #111 !important;
+  }
+
+  .exam-section h2 {
+    margin-top: 8px;
+    break-after: avoid;
+  }
+
+  .exam-cheatsheet h4,
+  .exam-cheatsheet h5 {
+    break-after: avoid;
+  }
+
+  .exam-section__count {
+    background: #eee !important;
+    color: #333 !important;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  .rt-math .katex {
+    color: #111 !important;
+  }
 }

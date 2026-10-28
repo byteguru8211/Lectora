@@ -611,32 +611,45 @@ def thumbnail(lecture_id: str):
         session.close()
 
 
+def _subtitle_response(lecture: Lecture, fmt: str) -> Response:
+    rows = (
+        db.session()
+        .query(TranscriptSegment)
+        .filter(TranscriptSegment.lecture_id == lecture.id)
+        .order_by(TranscriptSegment.idx)
+        .all()
+    )
+    requested = (request.args.get("lang") or lecture.language).lower()
+    if requested not in {lecture.language, lecture.target_language}:
+        raise ApiError("Субтитры на этом языке недоступны", 404, "subtitles_unavailable")
+    from ..utils.subtitles import build_subtitles
+
+    body = build_subtitles(
+        rows,
+        language=lecture.language,
+        target_language=lecture.target_language,
+        requested=requested,
+        fmt=fmt,
+    )
+    response = Response(body, mimetype="text/vtt" if fmt == "vtt" else "application/x-subrip")
+    response.headers["Cache-Control"] = "public, max-age=300"
+    return response
+
+
 @bp.get("/<lecture_id>/subtitles.vtt")
 def subtitles(lecture_id: str):
     session = db.session()
     try:
-        lecture = get_lecture_or_404(session, lecture_id)
-        rows = (
-            session.query(TranscriptSegment)
-            .filter(TranscriptSegment.lecture_id == lecture.id)
-            .order_by(TranscriptSegment.idx)
-            .all()
-        )
-        from ..utils.timefmt import vtt_time
+        return _subtitle_response(get_lecture_or_404(session, lecture_id), "vtt")
+    finally:
+        session.close()
 
-        lines = ["WEBVTT", ""]
-        requested = (request.args.get("lang") or lecture.language).lower()
-        if requested not in {lecture.language, lecture.target_language}:
-            raise ApiError("Субтитры на этом языке недоступны", 404, "subtitles_unavailable")
-        for row in rows:
-            value = row.translated_text if requested == lecture.target_language else row.text
-            text = (value or row.text).replace("-->", "->")
-            lines.append(f"{vtt_time(row.start_sec)} --> {vtt_time(row.end_sec)}")
-            lines.append(text)
-            lines.append("")
-        response = Response("\n".join(lines), mimetype="text/vtt")
-        response.headers["Cache-Control"] = "public, max-age=300"
-        return response
+
+@bp.get("/<lecture_id>/subtitles.srt")
+def subtitles_srt(lecture_id: str):
+    session = db.session()
+    try:
+        return _subtitle_response(get_lecture_or_404(session, lecture_id), "srt")
     finally:
         session.close()
 

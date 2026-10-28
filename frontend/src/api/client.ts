@@ -1,4 +1,5 @@
 import type {
+  ExamSheet,
   HealthResponse,
   LectureCard,
   LectureDetail,
@@ -143,6 +144,12 @@ export const api = {
   updateGroup: (id: string, patch: { name?: string; visibility?: "private" | "public" }) => request<VideoGroup>(`/api/groups/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   shareLecture: (id: string) => request<{ token: string; path: string }>(`/api/lectures/${id}/share`, { method: "POST" }),
   shareGroup: (id: string) => request<{ token: string; path: string }>(`/api/groups/${id}/share`, { method: "POST" }),
+  groupExam: (id: string) => request<ExamSheet>(`/api/groups/${id}/exam`),
+  buildGroupExam: (id: string, mode?: LlmMode) =>
+    request<ExamSheet>(`/api/groups/${id}/exam`, {
+      method: "POST",
+      body: JSON.stringify(mode ? { mode } : {}),
+    }),
   publicLectures: () => request<{ items: (LectureCard & { owner_name: string; group_name: string | null })[] }>("/api/public/lectures"),
   recommendations: (limit = 12) => request<RecommendationFeed>(`/api/recommendations?limit=${limit}`),
   recordPublicView: (id: string) =>

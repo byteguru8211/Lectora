@@ -22,6 +22,7 @@ from app.services.llm_modes import (
     MODE_API,
     MODE_LOCAL,
     MODE_OFFLINE,
+    client_for,
     fallback_chain,
     normalize_mode,
 )
@@ -261,6 +262,13 @@ def test_offline_is_not_advertised_as_a_mode():
 def test_fallback_chains_never_send_local_lectures_to_cloud():
     assert fallback_chain(MODE_API) == [MODE_API, MODE_LOCAL, MODE_OFFLINE]
     assert fallback_chain(MODE_LOCAL) == [MODE_LOCAL, MODE_OFFLINE]
+
+
+def test_offline_fallback_has_no_client_and_does_not_raise():
+    # ``resolve_client`` walks the fallback chain including the internal
+    # offline marker; ``client_for`` must accept it instead of validating it as
+    # a user-selectable mode.
+    assert client_for(MODE_OFFLINE) is None
 
 
 def test_resolve_client_falls_back_to_local_when_api_is_down(monkeypatch):

@@ -152,6 +152,7 @@ data: {"status":"ready","progress":100,…}
 
 Видео с `Accept-Ranges: bytes` (перемотка). `GET /thumbnail` — превью JPEG.
 `GET /subtitles.vtt?lang=ru|en` — WebVTT на выбранном доступном языке.
+`GET /subtitles.srt?lang=ru|en` — те же субтитры в SubRip для плееров и редакторов.
 `GET /voiceover` — сгенерированная дополнительная MP3-дорожка перевода.
 
 ## Поиск
@@ -239,23 +240,56 @@ data: {"status":"ready","progress":100,…}
 | `POST` | `/groups` | создать группу (`name`, `description`, `visibility`) |
 | `PATCH` | `/groups/{id}` | переименовать или сменить видимость |
 | `POST` | `/groups/{id}/share` | выпустить токен приватной ссылки |
+| `GET` | `/groups/{id}/exam` | сохранённая шпаргалка к экзамену по группе |
+| `POST` | `/groups/{id}/exam` | собрать или пересобрать шпаргалку (`mode`: `api`/`local`) |
 | `POST` | `/lectures/{id}/share` | выпустить токен ссылки на лекцию |
 | `GET` | `/public/lectures` | каталог: публичные лекции и лекции публичных групп |
 | `GET` | `/public/lectures/{id}` | карточка, конспект и структура публичной лекции |
 | `GET` | `/public/lectures/{id}/media` | видео с поддержкой Range |
 | `GET` | `/public/lectures/{id}/transcript` | транскрипт с таймкодами |
 | `GET` | `/public/lectures/{id}/subtitles.vtt?lang=…` | субтитры выбранного языка |
+| `GET` | `/public/lectures/{id}/subtitles.srt?lang=…` | те же субтитры в SubRip |
 | `GET` | `/public/lectures/{id}/voiceover` | дополнительная озвучка |
 | `GET` | `/public/lectures/{id}/search?q=…` | поиск внутри лекции |
 | `POST` | `/public/lectures/{id}/qa` | вопрос по лекции |
 | `GET` | `/shared/videos/{token}` | лекция по приватной ссылке |
 | `GET` | `/shared/groups/{token}` | группа по приватной ссылке |
+| `GET` | `/shared/groups/{token}/exam` | шпаргалка группы по приватной ссылке (только чтение) |
+| `GET` | `/shared/groups/{token}/lectures/{id}/subtitles.srt?lang=…` | SubRip в общей группе |
 | `GET` | `/shared/videos/{token}/transcript` | транскрипт по приватной ссылке |
 | `GET` | `/shared/videos/{token}/subtitles.vtt?lang=…` | субтитры по приватной ссылке |
+| `GET` | `/shared/videos/{token}/subtitles.srt?lang=…` | SubRip по приватной ссылке |
 | `GET` | `/shared/videos/{token}/voiceover` | озвучка по приватной ссылке |
 
 Каталог: `{ "items": [ { "id": "…", "title": "…", "owner_name": "…", "group_name": "…",
 "thumbnail_url": "/api/public/lectures/{id}/thumbnail", … } ] }`.
+
+### Шпаргалка к экзамену
+
+`GET /groups/{id}/exam` отдаёт сохранённую шпаргалку группы, `POST` — собирает её заново.
+Новых стадий обработки нет: шпаргалка строится по уже готовым конспектам (билеты, определения,
+формулы, полный текст), один вызов модели на слияние либо детерминированное извлечение, если
+модель недоступна.
+
+```json
+{
+  "status": "ready", "stale": false,
+  "lecture_count": 2, "current_lecture_count": 2,
+  "tickets": [ { "question": "…", "answer": "…", "lecture_id": "…",
+                 "lecture_title": "…", "start_sec": 41, "timestamp": "0:41" } ],
+  "definitions": [ { "term": "…", "definition": "…", "timestamp": "…" } ],
+  "formulas": [ { "formula": "\\int_a^b f(x)\\,dx", "meaning": "…", "timestamp": "…" } ],
+  "cheatsheet_md": "## Тема\n\n…",
+  "llm_mode": "api", "llm_mode_used": "offline", "generation_ms": 26,
+  "generated_at": "2026-10-28T02:43:00+03:00",
+  "can_generate": true, "mode_hint": "api"
+}
+```
+
+`status` — `missing` или `ready`. `stale: true` означает, что конспекты изменились после
+сборки (сравнивается отпечаток заголовков, сводок, тезисов и разделов — счётчики просмотров
+на него не влияют). `POST` без готовых лекций отвечает `409 no_ready_lectures`.
+`GET /shared/groups/{token}/exam` возвращает то же без права пересборки.
 
 ## Рекомендации
 

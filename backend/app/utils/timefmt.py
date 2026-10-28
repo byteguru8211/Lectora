@@ -51,3 +51,8 @@ def vtt_time(seconds: float) -> str:
     minutes, rem = divmod(rem, 60_000)
     secs, millis = divmod(rem, 1000)
     return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
+
+
+def srt_time(seconds: float) -> str:
+    """SubRip timestamp: ``00:01:02,500``."""
+    return vtt_time(seconds).replace(".", ",")
