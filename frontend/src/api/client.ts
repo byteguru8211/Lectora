@@ -68,6 +68,16 @@ export interface UploadPayload {
 
 export const api = {
   me: () => request<{ user: User }>("/api/auth/me"),
+  updateMe: (name: string) =>
+    request<{ user: User }>("/api/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: boolean }>("/api/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    }),
   register: (name: string, email: string, password: string, role: "student" | "teacher") => request<{ user: User }>("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password, role }) }),
   login: (email: string, password: string) => request<{ user: User }>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),

@@ -93,3 +93,51 @@ def me():
         return jsonify({"user": user_dict(user)})
     finally:
         db_session.close()
+
+
+def _current_user(db_session) -> User:
+    raw_id = session.get("user_id")
+    if not raw_id:
+        raise ApiError("Требуется вход", 401, "authentication_required")
+    user = db_session.get(User, uuid.UUID(raw_id))
+    if user is None:
+        session.clear()
+        raise ApiError("Требуется вход", 401, "authentication_required")
+    return user
+
+
+@bp.patch("/me")
+def update_me():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    if not 2 <= len(name) <= 120:
+        raise ApiError("Укажите имя длиной от 2 до 120 символов", 400, "bad_name")
+    db_session = db.session()
+    try:
+        user = _current_user(db_session)
+        user.name = name
+        db_session.commit()
+        return jsonify({"user": user_dict(user)})
+    finally:
+        db_session.close()
+
+
+@bp.post("/password")
+def change_password():
+    data = request.get_json(silent=True) or {}
+    current = data.get("current_password") or ""
+    new = data.get("new_password") or ""
+    if len(new) < 8:
+        raise ApiError("Новый пароль должен содержать не менее 8 символов", 400, "weak_password")
+    db_session = db.session()
+    try:
+        user = _current_user(db_session)
+        if not check_password_hash(user.password_hash, current):
+            raise ApiError("Текущий пароль указан неверно", 400, "invalid_current_password")
+        if check_password_hash(user.password_hash, new):
+            raise ApiError("Новый пароль совпадает с текущим", 400, "same_password")
+        user.password_hash = generate_password_hash(new)
+        db_session.commit()
+        return jsonify({"ok": True})
+    finally:
+        db_session.close()

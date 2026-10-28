@@ -468,7 +468,7 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
             </div>
           ) : (
             <div className="card">
-              <div className="panel">
+              <div className={`panel${tab === "notes" ? " panel--scroll" : ""}`}>
                 {tab === "notes" && (
                   <NotesPane
                     summary={lecture.summary}

@@ -18,6 +18,8 @@
 | `POST` | `/auth/login` | `{ "email", "password" }` | `200 { "user": { … } }` |
 | `POST` | `/auth/logout` | — | `204` |
 | `GET` | `/auth/me` | — | `200 { "user": { … } }` |
+| `PATCH` | `/auth/me` | `{ "name" }` | `200 { "user": { … } }` — имя от 2 до 120 символов |
+| `POST` | `/auth/password` | `{ "current_password", "new_password" }` | `200 { "ok": true }` — новый пароль не короче 8 символов |
 
 `/lectures*`, `/groups*`, `/recommendations` и `/stats` требуют входа; публичные маршруты
 `/public/*` и `/shared/*` доступны гостям.

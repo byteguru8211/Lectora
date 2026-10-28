@@ -10,6 +10,7 @@ import { LecturePage } from "./pages/LecturePage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { SearchPage } from "./pages/SearchPage";
 import { AccountPage } from "./pages/AccountPage";
+import { AccountSettingsPage } from "./pages/AccountSettingsPage";
 import { ExamSheetPage } from "./pages/ExamSheetPage";
 import { AuthPage } from "./pages/AuthPage";
 import { useAuth } from "./context/AuthContext";
@@ -58,6 +59,7 @@ export default function App() {
             <Route path="/lectures/:lectureId" element={<LecturePage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route path="/account" element={<AccountPage />} />
+            <Route path="/account/settings" element={<AccountSettingsPage />} />
             <Route path="/account/groups/:groupId/exam" element={<ExamSheetPage />} />
             <Route path="/public" element={<PublicLibraryPage />} />
             <Route path="/public/groups/:groupId" element={<PublicGroupPage />} />

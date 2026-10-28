@@ -61,7 +61,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </button>
 
           <div className="header__actions">
-            <NavLink to="/account" className="account-link" aria-label="Открыть личный кабинет" title={auth.user?.email}>
+            <NavLink to="/account/settings" className="account-link" aria-label="Настройки аккаунта" title={`${auth.user?.email ?? ""} · настройки`}>
               <span className="account-link__avatar"><UserIcon size={15} /></span>
               <span className="account-link__name">{auth.user?.name}</span>
             </NavLink>
