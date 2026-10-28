@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { api, ApiError } from "../api/client";
 import type { PublicGroupDetail } from "../api/types";
 import { LectureCard } from "../components/LectureCard";
-import { ArrowLeftIcon, BookIcon, FolderIcon, SparkIcon } from "../components/icons";
+import { ShareDialog, type ShareTarget } from "../components/ShareDialog";
+import { ArrowLeftIcon, BookIcon, FolderIcon, LinkIcon, SparkIcon } from "../components/icons";
 import { formatDurationLong } from "../utils/format";
 
 export function PublicGroupPage() {
@@ -11,6 +12,7 @@ export function PublicGroupPage() {
   const [data, setData] = useState<PublicGroupDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -40,11 +42,28 @@ export function PublicGroupPage() {
         <Link className="btn btn--ghost btn--sm" to="/public">
           <ArrowLeftIcon size={14} /> Публичные видео
         </Link>
-        {data && items.length > 0 && (
-          <Link className="btn btn--primary" to={`/public/groups/${groupId}/exam`}>
-            <SparkIcon size={15} /> Шпаргалка к экзамену
-          </Link>
-        )}
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn btn--ghost btn--sm"
+            onClick={() =>
+              setShareTarget({
+                kind: "url",
+                url: `${window.location.origin}/public/groups/${groupId}`,
+                title: group?.name ?? "Курс",
+                accessLabel: "Публичная ссылка на курс",
+                hint: "Откроется у всех, кто вошёл в Lectora.",
+              })
+            }
+            title="Скопировать ссылку на курс"
+          >
+            <LinkIcon size={14} /> Поделиться курсом
+          </button>
+          {data && items.length > 0 && (
+            <Link className="btn btn--primary" to={`/public/groups/${groupId}/exam`}>
+              <SparkIcon size={15} /> Шпаргалка к экзамену
+            </Link>
+          )}
+        </div>
       </div>
 
       <header className="exam-hero">
@@ -91,6 +110,8 @@ export function PublicGroupPage() {
           </div>
         )
       )}
+
+      <ShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
     </div>
   );
 }

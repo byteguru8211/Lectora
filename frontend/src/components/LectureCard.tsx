@@ -86,7 +86,7 @@ export function LectureCard({ lecture, onDelete, onShare, href }: Props) {
               <TrashIcon size={14} />
             </button>
           )}
-          {onShare && <button className="icon-btn" style={{ width: 28, height: 28 }} onClick={(event) => { event.preventDefault(); onShare(lecture); }} aria-label={`Поделиться «${lecture.title}»`} title="Скопировать приватную ссылку"><LinkIcon size={14} /></button>}
+          {onShare && <button className="icon-btn" style={{ width: 28, height: 28 }} onClick={(event) => { event.preventDefault(); onShare(lecture); }} aria-label={`Поделиться «${lecture.title}»`} title="Поделиться видео"><LinkIcon size={14} /></button>}
         </div>
       </div>
     </article>

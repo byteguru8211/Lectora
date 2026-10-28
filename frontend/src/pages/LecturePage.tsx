@@ -8,6 +8,7 @@ import { NotesPane } from "../components/NotesPane";
 import { QaPane } from "../components/QaPane";
 import { RenameDialog } from "../components/RenameDialog";
 import { SearchPane } from "../components/SearchPane";
+import { ShareDialog, type ShareTarget } from "../components/ShareDialog";
 import { SemanticTimeline } from "../components/SemanticTimeline";
 import { TranscriptPane } from "../components/TranscriptPane";
 import { VideoPlayer } from "../components/VideoPlayer";
@@ -18,6 +19,7 @@ import {
   ClockIcon,
   DownloadIcon,
   LayersIcon,
+  LinkIcon,
   PencilIcon,
   RefreshIcon,
   SearchIcon,
@@ -69,6 +71,7 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameBusy, setRenameBusy] = useState(false);
   const [working, setWorking] = useState(false);
+  const [shareTarget, setShareTarget] = useState<ShareTarget | null>(null);
 
   const initialSeek = useRef<number | null>(
     searchParams.get("t") ? Number(searchParams.get("t")) : null,
@@ -159,6 +162,29 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
     } catch {
       toast.error("Браузер запретил доступ к буферу обмена");
     }
+  };
+
+  const openShare = () => {
+    if (!lecture) return;
+    if (accessBase) {
+      const isPublicView = accessBase.startsWith("/api/public");
+      setShareTarget({
+        kind: "url",
+        url: `${window.location.origin}${window.location.pathname}`,
+        title: lecture.title,
+        accessLabel: "Ссылка на видео",
+        hint: isPublicView
+          ? "Публичная ссылка: откроется у всех, кто вошёл в Lectora."
+          : "Ссылка откроется у любого, кому вы её отправите.",
+      });
+      return;
+    }
+    setShareTarget({
+      kind: "lecture",
+      id: lecture.id,
+      title: lecture.title,
+      visibility: lecture.visibility,
+    });
   };
 
   const downloadTranscript = () => {
@@ -300,25 +326,36 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
           </div>
         </div>
 
-        {!accessBase && <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8 }}>
           <button
             className="btn btn--ghost btn--sm"
-            onClick={() => setNotesDialogOpen(true)}
-            disabled={processing}
-            title="Собрать конспект заново в другом режиме"
+            onClick={openShare}
+            title="Скопировать ссылку на видео"
           >
-            <SparkIcon size={14} /> Конспект
+            <LinkIcon size={14} /> Поделиться
           </button>
-          <button className="btn btn--ghost btn--sm" onClick={() => setRenameOpen(true)}>
-            <PencilIcon size={14} /> Переименовать
-          </button>
-          <button className="btn btn--ghost btn--sm" onClick={() => setConfirmReprocess(true)}>
-            <RefreshIcon size={14} /> Переобработать
-          </button>
-          <button className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label="Удалить лекцию" title="Удалить">
-            <TrashIcon size={16} />
-          </button>
-        </div>}
+          {!accessBase && (
+            <>
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setNotesDialogOpen(true)}
+                disabled={processing}
+                title="Собрать конспект заново в другом режиме"
+              >
+                <SparkIcon size={14} /> Конспект
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={() => setRenameOpen(true)}>
+                <PencilIcon size={14} /> Переименовать
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={() => setConfirmReprocess(true)}>
+                <RefreshIcon size={14} /> Переобработать
+              </button>
+              <button className="icon-btn" onClick={() => setConfirmDelete(true)} aria-label="Удалить лекцию" title="Удалить">
+                <TrashIcon size={16} />
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {processing && (
@@ -539,6 +576,8 @@ export function LecturePage({ accessBase, backTo = "/", backLabel = "Библи�
         onSave={renameLecture}
         onClose={() => setRenameOpen(false)}
       />}
+
+      <ShareDialog target={shareTarget} onClose={() => setShareTarget(null)} />
     </>
   );
 }
